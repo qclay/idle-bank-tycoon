@@ -1,0 +1,29 @@
+name = "pvz-backend"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+account_id = "5186781945aa8acf2e2b5bf6d4648251"
+
+# Прогресс и профили игроков
+[[d1_databases]]
+binding = "DB"
+database_name = "pvz"
+database_id = "e0356cbd-b195-4dea-a2cb-7a89084ee70f"
+
+# Комната пункта: в ней живёт совместное присутствие игроков
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+# SQLite-хранилище: на бесплатном плане доступен только этот вариант
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[observability]
+enabled = true
+
+# Секреты кладутся отдельно и в репозиторий не попадают:
+#   npx wrangler secret put BOT_TOKEN
+#   npx wrangler secret put OPENAI_KEY
+[vars]
+AI_MODEL = "gpt-5.6-luna"

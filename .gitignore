@@ -1,3 +1,8 @@
 node_modules/
 package-lock.json
 .DS_Store
+
+# секреты и локальные переменные — никогда в репозиторий
+server/.dev.vars
+server/.wrangler/
+.dev.vars

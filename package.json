@@ -1,7 +1,8 @@
 {
   "devDependencies": {
     "playwright": "^1.62.1",
-    "vite": "^8.2.1"
+    "vite": "^8.2.1",
+    "ws": "^8.21.3"
   },
   "dependencies": {
     "@esotericsoftware/spine-pixi-v8": "^4.3.13",
@@ -23,6 +24,8 @@
     "route": "node tools/route.mjs",
     "district": "node tools/district.mjs",
     "pace": "node tools/pace.mjs",
-    "mood": "node tools/mood.mjs"
+    "mood": "node tools/mood.mjs",
+    "api": "node tools/api.mjs",
+    "server": "cd server && npx wrangler deploy"
   }
 }
