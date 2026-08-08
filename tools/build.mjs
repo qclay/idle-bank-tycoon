@@ -12,7 +12,7 @@ await cp('css', `${OUT}/css`, { recursive: true });
 await cp('assets', `${OUT}/assets`, { recursive: true });
 
 let html = await readFile('index.html', 'utf8');
-html = html.replace('./js/main.js', './app.js');
+html = html.replace('./js/main.js', './js/app.js');
 await writeFile(`${OUT}/index.html`, html);
 
 // чтобы GitHub Pages не прогонял файлы через Jekyll

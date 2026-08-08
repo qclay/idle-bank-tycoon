@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
-// Собираем игру в один ESM-файл docs/app.js. Картинки и css кладёт рядом
+// Собираем игру в один ESM-файл docs/js/app.js.
+// Именно в подпапку: GitHub Pages не отдаёт посторонние файлы из корня docs/. Картинки и css кладёт рядом
 // tools/build.mjs — так все пути в рантайме остаются относительными страницы
 // и одинаково работают локально, на GitHub Pages и внутри Telegram.
 export default defineConfig({
@@ -15,9 +16,9 @@ export default defineConfig({
       input: 'js/main.js',
       output: {
         format: 'es',
-        entryFileNames: 'app.js',
+        entryFileNames: 'js/app.js',
         codeSplitting: false,
-        assetFileNames: 'app[extname]',
+        assetFileNames: 'js/app[extname]',
       },
     },
   },
