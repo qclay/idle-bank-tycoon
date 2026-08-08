@@ -12,6 +12,8 @@ export class Room {
     this.env = env;
     this.peers = new Map();   // ws → { id, name, x, y, dir, carry, seen }
     this.timer = null;
+    this.host = null;         // чей это пункт: он считает мир, остальные смотрят
+    this.snap = null;         // последний снимок мира от хоста
   }
 
   async fetch(req) {
@@ -25,7 +27,10 @@ export class Room {
 
     const id = url.searchParams.get('id') || '';
     const name = url.searchParams.get('name') || 'Игрок';
+    const room = url.searchParams.get('room') || '';
     if (!id) return new Response('нет игрока', { status: 400 });
+    // Комната названа по владельцу пункта: он и есть хост.
+    if (room && room === id) this.host = id;
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -41,7 +46,8 @@ export class Room {
     server.addEventListener('close', () => this.drop(server));
     server.addEventListener('error', () => this.drop(server));
 
-    this.send(server, { t: 'hello', you: id, players: this.list() });
+    if (!this.host) this.host = id;                 // некому считать — берёт первый
+    this.send(server, { t: 'hello', you: id, host: this.host, players: this.list(), snap: this.snap });
     this.broadcast({ t: 'join', player: this.peers.get(server) }, server);
     this.start();
 
@@ -61,6 +67,10 @@ export class Room {
       p.carry = Math.max(0, Number(m.carry) || 0);
     } else if (m.t === 'emote') {
       this.broadcast({ t: 'emote', id: p.id, kind: String(m.kind || '').slice(0, 12) }, ws);
+    } else if (m.t === 'snap' && p.id === this.host) {
+      // снимок мира рассылаем всем, кроме самого хоста
+      this.snap = m.s;
+      this.broadcast({ t: 'snap', s: m.s }, ws);
     } else if (m.t === 'ping') {
       this.send(ws, { t: 'pong' });
     }
@@ -70,6 +80,13 @@ export class Room {
     const p = this.peers.get(ws);
     this.peers.delete(ws);
     if (p) this.broadcast({ t: 'left', id: p.id });
+    // ушёл хост — мир считать некому, назначаем следующего и говорим об этом
+    if (p && p.id === this.host) {
+      const next = this.peers.values().next().value;
+      this.host = next ? next.id : null;
+      this.snap = null;
+      if (this.host) this.broadcast({ t: 'host', id: this.host });
+    }
     if (!this.peers.size) this.stop();
   }
 

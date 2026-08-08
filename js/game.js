@@ -127,6 +127,19 @@ if (!S.padPaid) S.padPaid = {};
 
 // ── Взаимодействие игрока ────────────────────────────────────────────────────
 
+// Кто сейчас работает в зале: хозяин и его гости. Хост считает действия
+// всех по их координатам — гость ничего не решает сам, подделать нечего.
+let workers = [];
+export function setWorkers(list) { workers = list || []; }
+function allWorkers() {
+  const me = {
+    get x() { return player.x; }, get y() { return player.y; },
+    get carry() { return S.carry; }, set carry(v) { S.carry = v; },
+    cap: bagCap(), local: true,
+  };
+  return [me, ...workers];
+}
+
 const PICK_R = 1.25;
 const DROP_R = 1.4;
 const SERVE_R = 1.35;
@@ -164,7 +177,10 @@ export function tick(dt, ui) {
     if (st.clerk > 0) speed = clerkSpeed(c);
     else {
       const sp = clerkSpot(c);
-      if (dist(player.x, player.y, sp.x, sp.y) < SERVE_R) speed = 1;
+      // за стойку может встать и гость — помощь считается так же
+      for (const w of allWorkers()) {
+        if (dist(w.x, w.y, sp.x, sp.y) < SERVE_R) { speed = 1; break; }
+      }
     }
     if (speed > 0) {
       if (k.state === 'wait') { k.state = 'serve'; k.serve = 0; }
@@ -174,32 +190,34 @@ export function tick(dt, ui) {
     }
   }
 
-  // 3. Игрок забирает наличные со стоек и банкоматов
+  // 3. Выручку со стоек и постаматов забирает любой, кто рядом
   pickAcc += dt;
-  const canCarry = S.carry < bagCap() - 1e-6;
-  if (canCarry) {
+  for (const w of allWorkers()) {
+    if (w.carry >= w.cap - 1e-6) continue;
     for (const c of COUNTERS) {
       const st = S.counters[c.id];
       if (!st.open || st.cash <= 0) continue;
       const p = pickSpot(c);
-      if (dist(player.x, player.y, p.x, p.y) > PICK_R) continue;
-      grab(st, trayPos(c), dt);
+      if (dist(w.x, w.y, p.x, p.y) > PICK_R) continue;
+      grab(st, trayPos(c), dt, w);
     }
     for (const a of ATMS) {
       const st = S.atms[a.id];
       if (!st.open || st.cash <= 0) continue;
       const p = atmPick(a);
-      if (dist(player.x, player.y, p.x, p.y) > PICK_R) continue;
-      grab(st, atmTray(a), dt);
+      if (dist(w.x, w.y, p.x, p.y) > PICK_R) continue;
+      grab(st, atmTray(a), dt, w);
     }
   }
 
-  // 4. Сдача в хранилище
-  if (S.carry > 0 && dist(player.x, player.y, VAULT.drop.x, VAULT.drop.y) < DROP_R) {
-    const rate = Math.max(bagCap() * 2.0, 30);
-    const give = Math.min(S.carry, rate * dt);
-    S.carry -= give;
+  // 4. Сдача в кассу — тоже любым из работающих
+  for (const w of allWorkers()) {
+    if (w.carry <= 0 || dist(w.x, w.y, VAULT.drop.x, VAULT.drop.y) >= DROP_R) continue;
+    const rate = Math.max(w.cap * 2.0, 30);
+    const give = Math.min(w.carry, rate * dt);
+    w.carry -= give;
     deposit(give);
+    if (!w.local) continue;
     depAcc += give;
     depTick += dt;
     if (S.settings.fx && depTick > 0.1) {
@@ -222,12 +240,13 @@ export function tick(dt, ui) {
 }
 
 let grabTick = 0;
-function grab(st, from, dt) {
-  const rate = Math.max(bagCap() * 1.6, 22);
-  const want = Math.min(st.cash, rate * dt);
-  const got = addCarry(want);
-  if (got <= 0) return;
-  st.cash -= got;
+function grab(st, from, dt, w) {
+  const rate = Math.max(w.cap * 1.6, 22);
+  const want = Math.min(st.cash, rate * dt, w.cap - w.carry);
+  if (want <= 0) return;
+  w.carry += want;
+  st.cash -= want;
+  if (!w.local) return;
   grabTick += dt;
   if (S.settings.fx && grabTick > 0.1) {
     grabTick = 0;

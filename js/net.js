@@ -12,7 +12,15 @@ export const net = {
   rev: 0,
   lastError: '',
   pending: false,
+  visiting: false,     // мы в гостях: чужой пункт своим прогрессом не считаем
 };
+
+/** Пока гостим у друга, состояние в памяти — чужое. Сохранять его под своим
+ *  именем нельзя, иначе визит затрёт собственный пункт. */
+export function setVisiting(v) {
+  net.visiting = !!v;
+  tell();
+}
 
 let initData = '';
 let listeners = new Set();
@@ -89,7 +97,7 @@ export function bind(readState, adoptServerState) {
 }
 
 export function markDirty(now = false) {
-  if (net.guest) return;
+  if (net.guest || net.visiting) return;
   dirty = true;
   if (now) return flush();
   if (!timer) timer = setTimeout(() => { timer = 0; flush(); }, 8000);
@@ -97,7 +105,7 @@ export function markDirty(now = false) {
 }
 
 export async function flush() {
-  if (net.guest || inFlight || !dirty || !getState) return null;
+  if (net.guest || net.visiting || inFlight || !dirty || !getState) return null;
   inFlight = true;
   dirty = false;
   net.pending = true;
@@ -124,7 +132,7 @@ export async function flush() {
 
 /** Последняя попытка сохраниться при уходе со страницы. */
 export function flushBeacon() {
-  if (net.guest || !getState || !dirty) return;
+  if (net.guest || net.visiting || !getState || !dirty) return;
   try {
     const { save, stats } = getState();
     const blob = new Blob([JSON.stringify({ save, stats, rev: net.rev, initData })],

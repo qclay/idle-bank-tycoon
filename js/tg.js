@@ -66,6 +66,20 @@ function applyVh(h) {
 /** Подпись Telegram — ею сервер удостоверяет игрока. */
 export function initDataRaw() { return tg?.initData || ''; }
 
+/** Пришли по ссылке-приглашению: startapp=room_<id> владельца пункта. */
+export function startParam() { return tg?.initDataUnsafe?.start_param || ''; }
+
+/** Позвать друга в свой пункт. */
+export function invite(myId, botName = '') {
+  // Прямая ссылка на бота со startapp открывает главное мини-приложение —
+  // не зависит от короткого имени приложения в BotFather.
+  const link = `https://t.me/${botName}?startapp=room_${myId}`;
+  const share = `https://t.me/share/url?url=${encodeURIComponent(link)}`
+    + `&text=${encodeURIComponent('Помоги мне на пункте выдачи — заходи!')}`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(share);
+  else window.open(share, '_blank');
+}
+
 export function tgHaptic(kind) {
   try {
     if (['success', 'error', 'warning'].includes(kind)) tg?.HapticFeedback?.notificationOccurred(kind);

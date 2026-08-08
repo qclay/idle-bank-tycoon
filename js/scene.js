@@ -84,25 +84,39 @@ function isoCyl(g, cx, cy, r, z0, h, base) {
   outline(g, top, 2);
 }
 
+let backdrop = null;
+function drawBackdropNow() { if (backdrop) drawBackdrop(backdrop); }
+
 // ── Запуск ───────────────────────────────────────────────────────────────────
 
 export async function initScene(host, onProgress = () => {}) {
   app = new Application();
+  // Телефон греется не от нашей математики, а от рисования: чем больше
+  // физических пикселей и чем чаще кадры, тем горячее. Поэтому пиксель
+  // ограничиваем, сглаживание включаем только там, где точки крупные (на
+  // плотном экране MSAA всё равно не видно, а стоит дорого), и просим у
+  // системы экономичный режим GPU.
+  const dpr = window.devicePixelRatio || 1;
+  const res = Math.min(dpr, 2);
   await app.init({
     background: 0x171029,
-    antialias: true,
-    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    antialias: res < 1.75,
+    resolution: res,
     autoDensity: true,
     resizeTo: host,
     preference: 'webgl',
+    powerPreference: 'low-power',
+    clearBeforeRender: true,
   });
   host.appendChild(app.canvas);
+  initQuality();
 
   onProgress(0.15);
   await loadTextures(onProgress);
 
   const back = new Graphics();
   app.stage.addChild(back);
+  backdrop = back;
   drawBackdrop(back);
   app.renderer.on('resize', () => drawBackdrop(back));
 
@@ -758,6 +772,17 @@ export function setServeRing(view, v) {
   g.stroke({ width: 4.5, color: 0x8FE642, cap: 'round' });
 }
 
+/** Напарник в зале — та же утка, но с фирменной подсветкой под ногами,
+ *  чтобы своего героя было ни с кем не спутать. */
+export function makeRemoteView() {
+  const c = makePlayerView();
+  const ring = new Graphics();
+  ring.ellipse(0, 0, 21, 10.5).fill({ color: 0x7C3AED, alpha: 0.32 });
+  ring.ellipse(0, 0, 21, 10.5).stroke({ width: 2.4, color: 0xA78BFA, alpha: 0.95 });
+  c.addChildAt(ring, 1);
+  return c;
+}
+
 /** Значок настроения над клиентом: недовольство видно издалека. */
 export function setMood(view, kind) {
   if (!view) return;
@@ -828,6 +853,65 @@ export function placeActor(view, x, y, z = 0) {
 }
 
 export function removeView(v) { v?.parent?.removeChild(v); v?.destroy?.({ children: true }); }
+
+// ── Нагрев и расход батареи ──────────────────────────────────────────────────
+// Кадры и плотность пикселя — единственные две ручки, которые реально меняют
+// температуру телефона. Держим их под контролем и сами убавляем, если
+// устройство не тянет.
+
+const quality = { fps: 60, scale: 1, base: 1, auto: true, low: 0 };
+
+function initQuality() {
+  quality.base = app.renderer.resolution;
+  quality.scale = 1;
+  app.ticker.maxFPS = quality.fps;
+  // В фоне рисовать нечего: вкладка свёрнута — останавливаем и кадры, и GPU.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) app.ticker.stop(); else app.ticker.start();
+  });
+}
+
+/** Планка кадров: 60 — плавно, 40 — ощутимо холоднее, 30 — режим экономии. */
+export function setMaxFps(n) {
+  quality.fps = n;
+  if (app) app.ticker.maxFPS = n;
+}
+
+/** Во сколько раз огрубляем картинку: 1 — как есть, 0.75 и 0.6 — экономнее. */
+export function setPixelScale(k) {
+  quality.scale = k;
+  if (!app) return;
+  const r = Math.max(1, quality.base * k);
+  if (Math.abs(app.renderer.resolution - r) < 0.01) return;
+  app.renderer.resolution = r;
+  app.renderer.resize(app.screen.width, app.screen.height, r);
+  drawBackdropNow();
+  fitCamera(insets.top, insets.bottom);
+}
+
+export function setAutoQuality(on) { quality.auto = on; quality.low = 0; }
+export function qualityInfo() { return { ...quality, res: app ? app.renderer.resolution : 0 }; }
+
+/** Раз в пару секунд смотрим, вытягивает ли устройство планку. Не вытягивает —
+ *  сначала убираем лишние пиксели, потом снижаем частоту кадров. */
+let qAcc = 0, qFrames = 0;
+export function tickQuality(dt) {
+  if (!quality.auto || !app) return;
+  qAcc += dt; qFrames++;
+  if (qAcc < 2) return;
+  const fps = qFrames / qAcc;
+  qAcc = 0; qFrames = 0;
+  if (fps < quality.fps * 0.8) {
+    quality.low++;
+    if (quality.low === 2 && quality.scale > 0.74) setPixelScale(0.75);
+    else if (quality.low >= 3 && quality.fps > 30) setMaxFps(30);
+  } else if (fps > quality.fps * 0.95) {
+    quality.low = 0;
+  }
+}
+
+/** Кадр игры считаем на тикере Pixi — тогда планка кадров держит и логику. */
+export function onFrame(fn) { app.ticker.add((t) => fn(t.deltaMS / 1000)); }
 
 // ── Камера ───────────────────────────────────────────────────────────────────
 

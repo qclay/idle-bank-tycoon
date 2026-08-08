@@ -284,6 +284,25 @@ function draw(k, dt) {
   scene.placeActor(k.view, k.x, k.y);
 }
 
+// ── Клиенты у гостя ──────────────────────────────────────────────────────────
+// Гость мир не считает: он рисует клиентов ровно так, как их прислал хост.
+
+const ghosts = new Map();
+export function showGhosts(list) {
+  const live = new Set();
+  for (const g of list) {
+    live.add(g.id);
+    let v = ghosts.get(g.id);
+    if (!v) { v = { view: scene.makeCharView(TINTS[Math.abs(hash(g.id)) % TINTS.length]), ft: 0 }; ghosts.set(g.id, v); }
+    v.ft += 0.12;
+    scene.setCharFrame(v.view, g.dir, g.moving ? Math.floor(v.ft) % 4 : 0);
+    if (g.state === 'upset') scene.setMood(v.view, 'bad');
+    scene.placeActor(v.view, g.x, g.y);
+  }
+  for (const [id, v] of ghosts) if (!live.has(id)) { scene.removeView(v.view); ghosts.delete(id); }
+}
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+
 // ── Персонал ─────────────────────────────────────────────────────────────────
 
 export const clerks = new Map();   // counterId → актёр

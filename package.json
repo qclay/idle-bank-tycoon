@@ -26,6 +26,7 @@
     "pace": "node tools/pace.mjs",
     "mood": "node tools/mood.mjs",
     "api": "node tools/api.mjs",
+    "coop": "node tools/coop.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

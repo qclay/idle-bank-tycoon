@@ -10,15 +10,28 @@ import * as ui from './ui.js';
 import * as screens from './screens.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
-import { initTG, isTG, pay, initDataRaw } from './tg.js';
+import { initTG, isTG, pay, initDataRaw, startParam, invite } from './tg.js';
+import * as coop from './coop.js';
 import * as net from './net.js';
 import { fmt } from './core.js';
+
+const BOT_NAME = 'mycoolreminder_bot';   // сюда ведут ссылки-приглашения
 import * as fx from './fx.js';
 
 const views = { counters: new Map(), atms: new Map(), zones: new Map(), piles: new Map(), pads: new Map() };
 let vaultView = null;
 
 window.__openTab = (tab, sub) => {
+  if (tab === 'settings') {
+    if (screens.isOpen()) screens.close(true);
+    screens.settings();
+    return;
+  }
+  // В гостях мы помогаем руками, а не распоряжаемся чужим пунктом.
+  if (coop.visiting() && tab !== 'bank') {
+    ui.toast('Это пункт друга — тратить его деньги нельзя');
+    return;
+  }
   if (tab === 'bank') { screens.close(); ui.setNav('bank'); return; }
   if (screens.isOpen()) screens.close(true);
   if (tab === 'tasks') screens.tasks(sub);
@@ -77,13 +90,30 @@ async function boot() {
       S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`);
     }), 400);
   }
+  // Совместная игра: по умолчанию свой пункт, по ссылке-приглашению — чужой.
+  if (authed && net.net.player) {
+    const sp = startParam();
+    const room = sp.startsWith('room_') ? sp.slice(5) : net.net.player.id;
+    coop.join(initDataRaw(), room, net.net.player.id);
+    window.__invite = () => invite(net.net.player.id, BOT_NAME);
+    window.__goHome = async () => {
+      coop.leave();
+      coop.join(initDataRaw(), net.net.player.id, net.net.player.id);
+      ui.toast('Вы вернулись в свой пункт');
+      ui.showCoop();
+    };
+    coop.onCoop(() => ui.showCoop());
+  }
+  ui.showCoop();
+
   prog(1);
   const b = document.getElementById('boot');
   b.classList.add('hide');
   setTimeout(() => b.remove(), 450);
 
+  applyQuality();
   window.__ready = true;          // сигнал для тестов: сцена собрана
-  requestAnimationFrame(loop);
+  scene.onFrame(loop);
   setInterval(() => net.flush(), SAVE_EVERY);
   setInterval(() => { district.ensure(); screens.updateBadges(); }, 1000);
   document.addEventListener('visibilitychange', () => {
@@ -106,6 +136,24 @@ async function onReturn() {
   const p = game.computeOffline(away);
   if (p) screens.offline(p, () => { S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`); });
 }
+
+/** Плавность выбирает игрок: «Плавно» греет сильнее, «Экономно» — меньше всего.
+ *  По умолчанию решаем сами, глядя на то, как устройство держит кадры. */
+export function applyQuality() {
+  const q = S.settings.quality || 'auto';
+  scene.setAutoQuality(q === 'auto');
+  if (q === 'high') { scene.setMaxFps(60); scene.setPixelScale(1); }
+  else if (q === 'saver') { scene.setMaxFps(30); scene.setPixelScale(0.7); }
+  else {
+    // Слабые телефоны греются даже там, где кадры формально держатся: у них
+    // мало ядер и памяти. Таким сразу даём щадящий режим, остальным — полный,
+    // а дальше сцена сама убавит, если не потянет.
+    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+    scene.setMaxFps(weak ? 40 : 60);
+    scene.setPixelScale(weak ? 0.8 : 1);
+  }
+}
+window.__applyQuality = applyQuality;
 
 // ── Постройка зала ───────────────────────────────────────────────────────────
 
@@ -188,26 +236,76 @@ function checkUpset() {
   screens.incident(k, () => { incidentOpen = false; });
 }
 
+/** Обмен с комнатой: свои координаты туда, чужие — в зал. */
+function syncCoop(dt, guest) {
+  if (!coop.coop.on) { game.setWorkers([]); return; }
+  const p = actors.player;
+  coop.sendMove(p.x, p.y, (p.vx - p.vy) >= 0 ? 1 : -1, S.carry);
+
+  // Сеть отдаёт позиции 10 раз в секунду — между ними напарника догоняем сами,
+  // иначе он телепортируется рывками.
+  const list = coop.others();
+  for (const r of list) {
+    if (!r.view) { r.view = scene.makeRemoteView(); r.rx = r.x; r.ry = r.y; }
+    const k = Math.min(1, dt * 12);
+    const dx = r.x - r.rx, dy = r.y - r.ry;
+    r.rx += dx * k; r.ry += dy * k;
+    const moving = Math.abs(dx) + Math.abs(dy) > 0.02;
+    r.ft = (r.ft || 0) + dt;
+    scene.setPlayerAnim(r.view, moving ? 'Walk' : 'Idle');
+    scene.setPlayerFlip(r.view, r.dir !== -1);
+    scene.bobPlayer(r.view, r.ft, moving);
+    scene.setCarryStack(r.view, Math.min(1, (r.carry || 0) / Math.max(1, actors.bagCap())));
+    scene.placeActor(r.view, r.rx, r.ry);
+  }
+  for (const r of coop.coop.players.values()) {
+    if (r.gone && r.view) { scene.removeView(r.view); r.view = null; }
+  }
+
+  if (coop.coop.host) {
+    // гости работают наравне: хост считает их действия по их координатам
+    game.setWorkers(list.map((r) => ({
+      x: r.x, y: r.y,
+      get carry() { return r.carry || 0; },
+      set carry(v) { r.carry = v; },
+      cap: actors.bagCap(), local: false,
+    })));
+    snapTick += dt;
+    if (snapTick > 0.1) { snapTick = 0; coop.pushSnap(actors.customers); }
+  } else {
+    game.setWorkers([]);
+    coop.applySnap(coop.coop.snap);
+  }
+}
+
 // ── Цикл ─────────────────────────────────────────────────────────────────────
+// Логика и рисование живут на одном тикере Pixi: планка кадров тогда сдерживает
+// и то, и другое, а телефон греется ровно настолько, насколько мы разрешили.
 
-let last = performance.now();
+let snapTick = 0;
 
-function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
-  last = now;
+function loop(rawDt) {
+  const dt = Math.min(0.05, rawDt);
+  scene.tickQuality(dt);
+  const guest = coop.coop.on && !coop.coop.host;
   const P = window.__prof;            // включается только из инструментов замера
   const t0 = P ? performance.now() : 0;
 
   actors.movePlayer(ui.joy.dx, ui.joy.dy, dt);
-  actors.tickCustomers(dt, (k) => {
+  syncCoop(dt, guest);
+  if (!guest) actors.tickCustomers(dt, (k) => {
     game.onServed(k);
     district.addServed(1);
     const v = views.counters.get(k.counter);
     if (v && S.settings.fx) fx.pulse(v, 0.06);
   });
   actors.tickClerks(dt);
-  actors.tickRunner(dt, game.takeFromSource, game.deposit);
-  game.tick(dt, ui);
+  if (!guest) {
+    actors.tickRunner(dt, game.takeFromSource, game.deposit);
+    game.tick(dt, ui);
+  } else {
+    actors.showGhosts(coop.snapCustomers());
+  }
 
   // стопки наличных на объектах
   for (const c of COUNTERS) {
@@ -235,9 +333,7 @@ function loop(now) {
     if (v) scene.setPadFill(v, (S.padPaid?.[p.id] || 0) / p.cost,
                             game.padState.id === p.id && game.padState.short);
   }
-  district.tick(dt);
-  reviews.tick(dt);
-  checkUpset();
+  if (!guest) { district.tick(dt); reviews.tick(dt); checkUpset(); }
   scene.tickTraffic(dt);
   scene.pulsePads([...views.pads.values()], dt, game.padState.id);
   fx.tick(dt);
@@ -246,13 +342,12 @@ function loop(now) {
   scene.sortItems();
   const t2 = P ? performance.now() : 0;
   ui.tickHud(dt);
-  ui.tickWorldTags();
+  ui.tickWorldTags(dt);
   if (P) {
     const t3 = performance.now();
     P.sim += t1 - t0; P.draw += t2 - t1; P.ui += t3 - t2; P.n++;
   }
 
-  requestAnimationFrame(loop);
 }
 
 boot().catch((e) => {
@@ -263,5 +358,5 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens, district, reviews, net };
+window.__game = { S, game, actors, scene, ui, screens, district, reviews, net, coop };
 window.__balance = BAL;   // для инструментов замера темпа

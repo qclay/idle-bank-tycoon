@@ -131,6 +131,7 @@ export default {
       const fwd = new URL(req.url);
       fwd.searchParams.set('id', u.id);
       fwd.searchParams.set('name', u.name);
+      fwd.searchParams.set('room', roomId);
       return stub.fetch(new Request(fwd, req));
     }
 

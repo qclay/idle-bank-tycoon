@@ -45,7 +45,7 @@ export function defaultState() {
     offlineUps: 0,
     offlinePending: null,
 
-    settings: { haptics: true, fx: true },
+    settings: { haptics: true, fx: true, quality: 'auto' },
     tut: 0,
     tg: null,
   };

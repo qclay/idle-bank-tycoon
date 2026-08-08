@@ -667,6 +667,54 @@ function shopView() {
   return wrap;
 }
 
+// ── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
+// Плавность здесь — не косметика: именно она решает, насколько греется телефон.
+
+const QUALITY = [
+  { id: 'auto', name: 'Авто', hint: 'подстраиваемся под телефон' },
+  { id: 'high', name: 'Плавно', hint: '60 кадров, греет сильнее' },
+  { id: 'saver', name: 'Экономно', hint: '30 кадров, холоднее и дольше держит заряд' },
+];
+
+export function settings() {
+  open({ title: 'Настройки', render: settingsView });
+}
+
+function settingsView() {
+  const wrap = document.createElement('div');
+  wrap.appendChild(h('<div class="sect">Плавность</div>').firstElementChild);
+
+  const row = h('<div class="segs"></div>').firstElementChild;
+  const cur = S.settings.quality || 'auto';
+  for (const q of QUALITY) {
+    const b = h(`<button class="seg${q.id === cur ? ' is-on' : ''}"><b>${q.name}</b><i>${q.hint}</i></button>`).firstElementChild;
+    b.addEventListener('click', () => {
+      S.settings.quality = q.id;
+      window.__applyQuality?.();
+      save(true);
+      refresh();
+    });
+    row.appendChild(b);
+  }
+  wrap.appendChild(row);
+
+  wrap.appendChild(h('<div class="sect">Прочее</div>').firstElementChild);
+  wrap.appendChild(toggle('Эффекты', 'монетки, вспышки и всплывающие числа', 'fx'));
+  wrap.appendChild(toggle('Вибрация', 'отклик при постройке и наградах', 'haptics'));
+  wrap.appendChild(h('<div class="empty">Если телефон греется — включите «Экономно».</div>').firstElementChild);
+  return wrap;
+}
+
+function toggle(name, hint, key) {
+  const on = S.settings[key] !== false;
+  const el = h(`<button class="setrow${on ? ' is-on' : ''}">
+    <span class="setrow__t"><b>${name}</b><i>${hint}</i></span>
+    <span class="setrow__sw"></span>
+  </button>`).firstElementChild;
+  el.addEventListener('click', () => { S.settings[key] = !on; save(true); refresh(); });
+  return el;
+}
+
 // ── ОФФЛАЙН ──────────────────────────────────────────────────────────────────
 
 export function offline(p, onTake) {

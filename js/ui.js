@@ -6,6 +6,7 @@ import { xpForLevel } from './balance.js';
 import { pads } from './game.js';
 import { COUNTERS, VAULT, DISTRICT } from './balance.js';
 import * as district from './district.js';
+import { coop, others, visiting } from './coop.js';
 import { clerkSpot } from './actors.js';
 import { player } from './actors.js';
 import { bagCap } from './actors.js';
@@ -32,6 +33,7 @@ export function initUI() {
     if (b) window.__openTab(b.dataset.tab);
   });
   $('#goldPill').addEventListener('click', () => window.__openTab('shop'));
+  $('#gearBtn').addEventListener('click', () => window.__openTab('settings'));
 }
 
 export function setNav(tab) {
@@ -124,8 +126,15 @@ export function tickHud(dt) {
 
 const tags = new Map();
 
-export function tickWorldTags() {
+// Подписи в мире — это DOM: каждая запись transform стоит браузеру пересчёта
+// слоя. Шестьдесят раз в секунду это не нужно, глазу хватает двадцати.
+let tagAcc = 0;
+export function tickWorldTags(dt = 0.016) {
+  tagAcc += dt;
+  if (tagAcc < 0.05) return;
+  tagAcc = 0;
   tickFoeMarker();
+  tickNameTags();
   const list = pads();
   const seen = new Set();
   for (const p of list) {
@@ -193,6 +202,56 @@ function hint(id, text, x, y, seen) {
 
 export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
 
+// ── Подписи над гостями ──────────────────────────────────────────────────────
+
+const nameTags = new Map();
+function tickNameTags() {
+  const live = new Set();
+  for (const p of others()) {
+    live.add(p.id);
+    let el = nameTags.get(p.id);
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'nametag';
+      el.textContent = p.name;
+      els.worldUI.appendChild(el);
+      nameTags.set(p.id, el);
+    }
+    const s = scene.screenOf(p.x, p.y, 1.5);
+    el.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
+    el.classList.toggle('is-busy', (p.carry || 0) > 0.5);
+  }
+  for (const [id, el] of nameTags) if (!live.has(id)) { el.remove(); nameTags.delete(id); }
+}
+
+/** Кто сейчас в зале. В своём пункте зовёт друга, в гостях — уводит домой. */
+export function showCoop() {
+  let el = document.getElementById('coopChip');
+  if (!el) {
+    el = document.createElement('button');
+    el.id = 'coopChip';
+    el.className = 'coopchip';
+    el.addEventListener('click', () => {
+      if (visiting()) window.__goHome?.();
+      else window.__invite?.();
+    });
+    document.getElementById('hud').appendChild(el);
+  }
+  const list = others();
+  const away = visiting();
+  const ic = (id) => `<span class="ic"><svg><use href="#i-${id}"/></svg></span>`;
+  if (away) {
+    const host = list.find((p) => p.id === coop.roomId);
+    el.innerHTML = `${ic('staff')}В гостях${host ? ` у ${host.name}` : ''} · выйти`;
+  } else if (list.length) {
+    el.innerHTML = `${ic('staff')}${list.map((p) => p.name).join(', ')} помогает`;
+  } else {
+    el.innerHTML = `${ic('staff')}Позвать друга`;
+  }
+  el.classList.toggle('is-live', list.length > 0);
+  el.classList.toggle('is-away', away);
+}
+
 // ── Указатель на соперника ───────────────────────────────────────────────────
 // Здание стоит через дорогу и часто вне кадра — без указателя игрок его
 // просто не находит.
@@ -215,7 +274,10 @@ export function tickFoeMarker() {
   const W = scene.viewW(), H = scene.viewH();
   const ins = hudInsets();
   const pad = 26 * du();
-  const minY = ins.top + pad, maxY = H - ins.bottom - pad;
+  // Метка растёт вверх от точки, поэтому в верхний упор закладываем её высоту —
+  // иначе она наползает на полоску уровня.
+  const minY = ins.top + pad + (foeEl.offsetHeight || 34 * du());
+  const maxY = H - ins.bottom - pad;
   const minX = pad, maxX = W - pad;
   const off = p.x < minX || p.x > maxX || p.y < minY || p.y > maxY;
   const x = Math.max(minX, Math.min(maxX, p.x));
@@ -282,6 +344,7 @@ export function setBadge(tab, n) {
 
 export function hudInsets() {
   const d = du();
-  return { top: 56 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0),
+  // 56 — шапка с деньгами, дальше полоска уровня, ноша и плашка «кто в пункте».
+  return { top: 146 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0),
            bottom: 90 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
 }
