@@ -89,7 +89,7 @@ function isoCyl(g, cx, cy, r, z0, h, base) {
 export async function initScene(host, onProgress = () => {}) {
   app = new Application();
   await app.init({
-    background: 0x101f31,
+    background: 0x171029,
     antialias: true,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
@@ -157,23 +157,24 @@ export function texture(k) { return tex[k]; }
 function drawBackdrop(g) {
   const w = app.screen.width, h = app.screen.height;
   g.clear();
-  g.rect(0, 0, w, h).fill(0x0f1e2f);
+  g.rect(0, 0, w, h).fill(0x171029);
   // мягкое пятно света по центру — зал не висит в пустоте
   const steps = 7;
   for (let i = steps; i > 0; i--) {
     const k = i / steps;
     g.ellipse(w / 2, h * 0.48, w * 0.95 * k, h * 0.62 * k)
-      .fill({ color: 0x1d3350, alpha: 0.16 });
+      .fill({ color: 0x3B1E7A, alpha: 0.15 });
   }
 }
 
 // ── Пол, стены, декор ────────────────────────────────────────────────────────
 
-const FLOOR_A = 0xe8e2d4;
-const FLOOR_B = 0xdcd4c2;
-const CARPET = 0x9d5b52;
-const WALL = 0xf2ece0;
-const DECOR = [[0.6, 12.2], [17.3, 0.6], [17.3, 12.2], [0.6, 10.6]];
+const FLOOR_A = 0xf1eef7;      // светлая плитка
+const FLOOR_B = 0xe4dfef;
+const CARPET = 0x7C3AED;       // фирменная дорожка к стойкам
+const WALL = 0xfbfaff;
+const SHELF = 0xb9a9d6;        // стеллажи
+const PARCEL = [0xF4A261, 0xE9C46A, 0x8ECae6, 0xB5E48C, 0xF2A6C2, 0xC7B9F5];
 
 function buildGround() {
   const g = new Graphics();
@@ -185,11 +186,11 @@ function buildGround() {
       isoRhomb(g, x, y, x + 1, y + 1, 0, c);
     }
   }
-  // ковровая дорожка: от входа вдоль зала и к стойкам
-  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.002, CARPET, { alpha: 0.85 });
-  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.002, CARPET, { alpha: 0.85 });
-  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.003, 0, { alpha: 0, ow: 2, oc: 0x7d4038, oa: 0.45 });
-  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.003, 0, { alpha: 0, ow: 2, oc: 0x7d4038, oa: 0.45 });
+  // фирменная дорожка: от входа вдоль зала и к стойкам
+  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.002, CARPET, { alpha: 0.5 });
+  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.002, CARPET, { alpha: 0.5 });
+  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.4 });
+  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.4 });
 
   // контур пола
   isoRhomb(g, 0, 0, HALL.w, HALL.h, 0.004, 0x000000, { alpha: 0, ow: 2.5, oc: 0x6b5a44, oa: 0.35 });
@@ -198,33 +199,67 @@ function buildGround() {
   isoBox(g, 0, -0.22, HALL.w, 0, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
   isoBox(g, -0.22, 0, 0, HALL.h, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
   // плинтус
-  isoBox(g, 0, -0.22, HALL.w, 0, 0, 0.14, 0x8d7a61);
-  isoBox(g, -0.22, 0, 0, HALL.h, 0, 0.14, 0x8d7a61);
+  isoBox(g, 0, -0.22, HALL.w, 0, 0, 0.14, 0x7C3AED);
+  isoBox(g, -0.22, 0, 0, HALL.h, 0, 0.14, 0x7C3AED);
 
   // окна на дальней стене
   for (let x = 3.4; x < HALL.w - 1.5; x += 3.4) {
-    isoBox(g, x, -0.24, x + 1.7, -0.2, 1.05, 1.15, 0x9fd6f2, { ow: 2 });
+    isoBox(g, x, -0.24, x + 1.7, -0.2, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
   }
   for (let y = 3.4; y < HALL.h - 1.5; y += 3.4) {
-    isoBox(g, -0.24, y, -0.2, y + 1.7, 1.05, 1.15, 0x9fd6f2, { ow: 2 });
+    isoBox(g, -0.24, y, -0.2, y + 1.7, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
   }
+
+  // стеллажи с посылками вдоль дальних стен
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const rack = (x0, y0, x1, y1, vertical) => {
+    isoBox(g, x0, y0, x1, y1, 0, 2.15, SHELF, { sheen: false });
+    for (let lvl = 0; lvl < 3; lvl++) {
+      const z = 0.5 + lvl * 0.62;
+      isoBox(g, x0 - 0.04, y0 - 0.04, x1 + 0.04, y1 + 0.04, z, 0.07, shade(SHELF, -0.3));
+      const n = vertical ? Math.round((y1 - y0) / 0.55) : Math.round((x1 - x0) / 0.55);
+      for (let i = 0; i < n; i++) {
+        if (rnd() < 0.22) continue;
+        const c = PARCEL[Math.floor(rnd() * PARCEL.length)];
+        const s2 = 0.3 + rnd() * 0.1;
+        const px0 = vertical ? x0 + 0.08 : x0 + 0.12 + i * 0.55;
+        const py0 = vertical ? y0 + 0.12 + i * 0.55 : y0 + 0.08;
+        isoBox(g, px0, py0, px0 + (vertical ? 0.34 : s2), py0 + (vertical ? s2 : 0.34), z + 0.07, 0.34 + rnd() * 0.14, c);
+      }
+    }
+  };
+  rack(1.2, 0.05, 4.6, 0.5, false);
+  rack(8.2, 0.05, 13.4, 0.5, false);
+  rack(0.05, 9.2, 0.5, 12.3, true);
 
   ground.addChild(g);
 
-  // вазоны по углам зала
+  // паллеты с посылками и скамья ожидания — вместо фермерского декора
   const dec = new Graphics();
-  for (const [x, y] of DECOR) {
-    isoCyl(dec, x, y, 0.32, 0, 0.42, 0xb9743f);
-  }
+  const pallet = (x, y) => {
+    isoBox(dec, x, y, x + 1.1, y + 1.1, 0, 0.14, 0x8b7355);
+    let h2 = 0.14;
+    for (let i = 0; i < 3; i++) {
+      const w2 = 0.9 - i * 0.12;
+      const off = (1.1 - w2) / 2;
+      const cc = PARCEL[(i + Math.round(x + y)) % PARCEL.length];
+      isoBox(dec, x + off, y + off, x + off + w2, y + off + w2, h2, 0.38, cc);
+      h2 += 0.38;
+    }
+  };
+  pallet(0.5, 10.9);
+  pallet(16.2, 0.6);
+  // скамьи для ожидающих: ножки, сиденье, спинка
+  const bench = (x, y) => {
+    isoBox(dec, x + 0.06, y + 0.08, x + 0.18, y + 0.2, 0, 0.34, 0x6D28D9);
+    isoBox(dec, x + 1.22, y + 0.08, x + 1.34, y + 0.2, 0, 0.34, 0x6D28D9);
+    isoBox(dec, x, y, x + 1.4, y + 0.46, 0.34, 0.12, 0xA78BFA);
+    isoBox(dec, x, y - 0.04, x + 1.4, y + 0.02, 0.46, 0.46, 0x8B5CF6);
+  };
+  bench(15.3, 6.5);
+  bench(15.3, 9.1);
   ground.addChild(dec);
-  for (const [x, y] of DECOR) {
-    const s = new Sprite(tex.plant);
-    s.anchor.set(0.5, 1);
-    const p = px(x, y, 0.42);
-    s.x = p.x; s.y = p.y;
-    s.scale.set(0.26);
-    ground.addChild(s);
-  }
 
   // входная зона
   const dg = new Graphics();
@@ -239,25 +274,24 @@ export function buildVault() {
   const c = new Container();
   const g = new Graphics();
   const { x, y, w, h } = VAULT;
-  isoBox(g, x, y, x + w, y + h, 0, 1.9, 0x51617a);
-  isoBox(g, x + 0.1, y + 0.1, x + w - 0.1, y + h - 0.1, 1.9, 0.12, 0x6a7c96);
-  // дверь на фронтальной грани
-  isoBox(g, x + 0.4, y + h, x + w - 0.4, y + h + 0.14, 0.25, 1.3, 0x8f9fb5);
+  // тумба кассы
+  isoBox(g, x, y, x + w, y + h, 0, 0.95, 0x7C3AED);
+  isoBox(g, x - 0.07, y - 0.07, x + w + 0.07, y + h + 0.07, 0.95, 0.12, 0xF3F0FA);
+  // задняя стенка с логотипом-полосой
+  isoBox(g, x, y - 0.02, x + w, y + 0.02, 1.07, 1.5, 0xEDE9FE, { sheen: false });
+  isoBox(g, x + 0.1, y - 0.04, x + w - 0.1, y - 0.01, 1.9, 0.42, 0x7C3AED);
+  // монитор и терминал на столешнице
+  isoBox(g, x + 0.25, y + 0.55, x + 0.95, y + 0.62, 1.07, 0.5, 0x2A2140);
+  isoBox(g, x + 1.5, y + 0.6, x + 1.9, y + 0.95, 1.07, 0.22, 0x4C1D95);
   c.addChild(g);
 
-  const wheel = new Graphics();
-  wheel.circle(0, 0, 15).fill(0xc9d5e6).stroke({ width: 3, color: INK });
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI * 2;
-    wheel.moveTo(0, 0).lineTo(Math.cos(a) * 22, Math.sin(a) * 22 * 0.62)
-      .stroke({ width: 5, color: 0xc9d5e6 });
-  }
-  wheel.circle(0, 0, 7).fill(0x8f9fb5);
-  const wp = px(x + w / 2, y + h + 0.14, 0.92);
-  wheel.x = wp.x; wheel.y = wp.y;
-  c.addChild(wheel);
+  // денежный поддон, куда сдают выручку
+  const tray = new Graphics();
+  isoRhomb(tray, x + 0.2, y + h + 0.35, x + w - 0.2, y + h + 1.15, 0.012, 0x8B5CF6, { alpha: 0.35 });
+  isoRhomb(tray, x + 0.2, y + h + 0.35, x + w - 0.2, y + h + 1.15, 0.013, 0,
+    { alpha: 0, ow: 3, oc: 0x7C3AED, oa: 0.9 });
+  c.addChild(tray);
   c.zIndex = depth(x + w / 2, y + h);
-  c.__wheel = wheel;
   items.addChild(c);
   return c;
 }
@@ -268,15 +302,17 @@ export function buildCounter(def, opened) {
   const g = new Graphics();
   const x = def.x, y = def.y;
   if (opened) {
+    // тумба + белая столешница
     isoBox(g, x, y, x + 2, y + 0.62, 0, 0.86, def.tone);
-    isoBox(g, x - 0.08, y - 0.08, x + 2.08, y + 0.7, 0.86, 0.1, shade(def.tone, 0.45));
-    // стеклянная перегородка: прозрачная, иначе прячет кассира
-    const gl = new Graphics();
-    isoBox(gl, x + 0.15, y - 0.02, x + 1.85, y + 0.02, 0.96, 0.62, 0xcfeeff, { ow: 1.4 });
-    gl.alpha = 0.55;
-    c.addChild(gl);
-    // табличка
-    isoBox(g, x + 0.6, y + 0.64, x + 1.4, y + 0.68, 0.96, 0.34, shade(def.tone, -0.1), { ow: 1.6 });
+    isoBox(g, x - 0.08, y - 0.08, x + 2.08, y + 0.7, 0.86, 0.1, 0xFBFAFF);
+    // монитор и сканер на столе
+    isoBox(g, x + 0.25, y + 0.12, x + 0.75, y + 0.18, 0.96, 0.42, 0x2A2140);
+    isoBox(g, x + 1.45, y + 0.2, x + 1.75, y + 0.5, 0.96, 0.16, shade(def.tone, -0.3));
+    // номер стойки на фронтальной грани
+    isoBox(g, x + 0.7, y + 0.62, x + 1.3, y + 0.66, 0.28, 0.3, 0xFBFAFF, { ow: 1.4 });
+    // короб с готовыми заказами рядом
+    isoBox(g, x + 2.12, y + 0.05, x + 2.62, y + 0.55, 0, 0.42, 0xE9C46A);
+    isoBox(g, x + 2.12, y + 0.05, x + 2.62, y + 0.55, 0.42, 0.36, 0xF4A261);
   } else {
     // место под будущую стойку: только контур на полу + бледный силуэт
     isoBox(g, x, y, x + 2, y + 0.62, 0, 0.86, def.tone, { ow: 0, sheen: false });
@@ -296,17 +332,26 @@ export function buildAtm(def, opened) {
   const g = new Graphics();
   const x = def.x, y = def.y;
   if (opened) {
-    isoBox(g, x, y, x + 0.72, y + 0.6, 0, 1.45, def.tone);
-    isoBox(g, x + 0.08, y + 0.6, x + 0.64, y + 0.64, 0.85, 0.45, 0x2e3d52, { ow: 1.6 });
-    isoBox(g, x + 0.12, y + 0.6, x + 0.6, y + 0.63, 0.92, 0.3, 0x63d2ff, { ow: 1.2 });
+    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 2.05, def.tone);
+    // сетка ячеек на фронтальной грани
+    for (let r = 0; r < 4; r++) {
+      for (let cc = 0; cc < 2; cc++) {
+        const zz = 0.16 + r * 0.46;
+        const xx = x + 0.06 + cc * 0.36;
+        isoBox(g, xx, y + 0.66, xx + 0.3, y + 0.69, zz, 0.36, shade(def.tone, 0.3), { ow: 1.2 });
+      }
+    }
+    // экран сверху
+    isoBox(g, x + 0.12, y + 0.66, x + 0.68, y + 0.7, 1.66, 0.3, 0x2A2140, { ow: 1.2 });
+    isoBox(g, x + 0.16, y + 0.66, x + 0.64, y + 0.69, 1.7, 0.22, 0x67E8F9, { ow: 1 });
   } else {
-    isoBox(g, x, y, x + 0.72, y + 0.6, 0, 1.45, def.tone, { ow: 0, sheen: false });
+    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 2.05, def.tone, { ow: 0, sheen: false });
     c.__ghost = true;
-    isoRhomb(g, x, y, x + 0.72, y + 0.6, 0.012, 0, { alpha: 0, ow: 2, oc: 0xffffff, oa: 0.35 });
+    isoRhomb(g, x, y, x + 0.8, y + 0.66, 0.012, 0, { alpha: 0, ow: 2, oc: 0xffffff, oa: 0.35 });
   }
   c.addChild(g);
   if (c.__ghost) c.alpha = 0.16;
-  c.zIndex = depth(x + 0.36, y + 0.6);
+  c.zIndex = depth(x + 0.4, y + 0.66);
   items.addChild(c);
   return c;
 }

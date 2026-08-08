@@ -1,44 +1,50 @@
-// Окна игры. Структура и стили — из вольера фермы; иконки только картинками.
+// Окна игры: нижний лист, карточки, строки. Иконки — свой SVG-спрайт.
 
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE, UPGRADES,
+  DAILY_ALL, OFFLINE,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
   counterPay, counterUpCost, upgradeCounter, atmRate, atmUpCost, upgradeAtm,
-  clerkCost, clerkSpeed, hireClerk, runnerCost, hireRunner, boostLeft, boostOn,
+  clerkCost, clerkSpeed, hireClerk, runnerCost, hireRunner, boostLeft,
   shownIncome, offlineUpCost, offlineCapSec, autoIncome,
 } from './game.js';
 import { toast, haptic, setNav, setBadge } from './ui.js';
 
-const COIN = './assets/ui/coin.png';
-const STAR = './assets/ui/hud_star.png';
-
 const root = () => document.getElementById('winRoot');
-let cur = null;          // { el, render }
+let cur = null;
 
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const ic = (name, cls = 'ic') => `<span class="${cls}"><svg><use href="#${name}"/></svg></span>`;
+const h = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d; };
+
+/** Кнопка: заголовок + опционально цена с иконкой. */
+function btn(cls, title, price, icon = 'i-coin', off = false) {
+  return `<button class="btn ${cls}"${off ? ' disabled' : ''}>
+    <span class="btn__t">${esc(title)}</span>
+    ${price != null ? `<span class="btn__p">${ic(icon)}${price}</span>` : ''}
+  </button>`;
+}
 
 // ── Каркас окна ──────────────────────────────────────────────────────────────
 
 function open({ title, tabs, render, cap }) {
   close(true);
   const el = document.createElement('div');
-  el.className = 'win' + (tabs ? ' win--tabs' : ' win--plain') + (cap ? '' : ' win--nocap');
+  el.className = 'win';
   el.innerHTML = `
-    <div class="win__wrap">
-      <div class="win__body">
-        <div class="win__head"><b>${esc(title)}</b></div>
-        <button class="win__close"><img src="./assets/pen/close.png" alt=""></button>
-        ${tabs ? `<div class="win__tabs">${tabs.map((t, i) => `
-          <button class="win__tab${i === 0 ? ' is-on' : ''}" data-i="${i}">
-            <img src="./assets/orders/${i === 0 ? 'tab_active' : 'tab_done'}.png" alt="">
-            <b>${esc(t.label)}</b></button>`).join('')}</div>` : ''}
-        <div class="win__panel"><div class="win__scroll"></div></div>
-        ${cap ? '<div class="win__cap"></div>' : ''}
+    <div class="win__body">
+      <div class="win__grab"></div>
+      <div class="win__head">
+        <h2>${esc(title)}</h2>
+        <button class="win__close">${ic('i-close', 'ic')}</button>
       </div>
+      ${tabs ? `<div class="win__tabs">${tabs.map((t, i) =>
+        `<button class="win__tab${i === 0 ? ' is-on' : ''}" data-i="${i}">${esc(t.label)}</button>`).join('')}</div>` : ''}
+      <div class="win__scroll"></div>
+      ${cap ? '<div class="win__cap"></div>' : ''}
     </div>`;
   root().appendChild(el);
   requestAnimationFrame(() => el.classList.add('is-open'));
@@ -62,15 +68,11 @@ function open({ title, tabs, render, cap }) {
   };
 
   el.querySelector('.win__close').addEventListener('click', () => close());
-  el.addEventListener('click', (e) => { if (e.target === el || e.target.classList.contains('win__wrap')) close(); });
-
+  el.addEventListener('click', (e) => { if (e.target === el) close(); });
   if (tabs) {
     el.querySelectorAll('.win__tab').forEach((b) => b.addEventListener('click', () => {
       tabIdx = Number(b.dataset.i);
-      el.querySelectorAll('.win__tab').forEach((x, i) => {
-        x.classList.toggle('is-on', i === tabIdx);
-        x.querySelector('img').src = `./assets/orders/${i === tabIdx ? 'tab_active' : 'tab_done'}.png`;
-      });
+      el.querySelectorAll('.win__tab').forEach((x, i) => x.classList.toggle('is-on', i === tabIdx));
       scroll.scrollTop = 0;
       paint();
     }));
@@ -85,24 +87,13 @@ export function close(silent = false) {
   if (!cur) return;
   const { el } = cur;
   el.classList.remove('is-open');
-  setTimeout(() => el.remove(), 200);
+  setTimeout(() => el.remove(), 240);
   cur = null;
   if (!silent) setNav('bank');
 }
 
 export function refresh() { cur?.paint(); }
 export function isOpen() { return !!cur; }
-
-// ── Кнопки ───────────────────────────────────────────────────────────────────
-
-function btn(cls, title, price, icon = COIN, disabled = false) {
-  return `<button class="btn ${cls}"${disabled ? ' disabled' : ''}>
-    <span class="btn__t">${esc(title)}</span>
-    ${price != null ? `<span class="btn__p"><img src="${icon}" alt="">${price}</span>` : ''}
-  </button>`;
-}
-
-const h = (html) => { const d = document.createElement('div'); d.innerHTML = html.trim(); return d; };
 
 // ── ПЕРСОНАЛ ─────────────────────────────────────────────────────────────────
 
@@ -116,16 +107,17 @@ export function staff() {
       const lvl = S.runner;
       const maxed = lvl >= STAFF.runner.maxLvl;
       const el = h(`
-        <img class="win__cap-ico" src="${STAFF.runner.art}" alt="">
+        <span class="tile tile--cyan">${ic('i-run', 'ic')}</span>
         <div class="win__cap-txt">
-          <div class="win__cap-t1">Инкассатор ${lvl ? `<b>ур. ${lvl}</b>` : ''}</div>
-          <div class="win__cap-t2">${lvl ? 'Сам относит выручку в хранилище' : 'Некому носить выручку — берите сами'}</div>
+          <div class="win__cap-t1">Администратор${lvl ? ` · ур. ${lvl}` : ''}</div>
+          <div class="win__cap-t2">${lvl ? 'Сам относит выручку в кассу, даже когда вы вышли'
+                                        : 'Пока его нет, выручку носите вы'}</div>
         </div>
-        ${btn('btn--cap', maxed ? 'Максимум' : lvl ? 'Улучшить' : 'Нанять',
-              maxed ? null : fmt(cost), COIN, maxed || S.cash < cost)}`);
+        ${btn('btn--v', maxed ? 'Максимум' : lvl ? 'Улучшить' : 'Нанять',
+              maxed ? null : fmt(cost), 'i-coin', maxed || S.cash < cost)}`);
       const b = el.querySelector('button');
       if (!maxed && S.cash >= cost) b.addEventListener('click', () => {
-        if (hireRunner()) { haptic('success'); toast('Инкассатор вышел на смену'); refresh(); }
+        if (hireRunner()) { haptic('success'); toast('Администратор вышел на смену'); refresh(); }
       });
       return el;
     },
@@ -144,20 +136,21 @@ function staffView() {
     const hireC = clerkCost(c);
     const maxed = st.clerk >= STAFF.clerk.maxLvl;
     const row = h(`<div class="row row--two">
-      <div class="row__art"><img src="./assets/char/se_0.png" alt=""></div>
-      <div class="row__name">${esc(c.name)} <span class="lvlpill">ур. ${st.lvl}</span></div>
-      <div class="row__stat"><img src="${COIN}" alt="">
-        ${fmt(counterPay(c))} <span class="arr">→</span> <span class="nx">${fmt(counterPay(c) * 1.14)}</span></div>
-      <div class="row__stat">Кассир: ${st.clerk ? `ур. ${st.clerk}` : 'нет'}${st.clerk ? ` · ×${clerkSpeed(c).toFixed(2)}` : ''}</div>
-      ${btn('btn--green btn--a', 'Улучшить', fmt(upC), COIN, S.cash < upC)}
-      ${btn('btn--blue btn--b', maxed ? 'Максимум' : st.clerk ? 'Кассир +' : 'Кассир', maxed ? null : fmt(hireC), COIN, maxed || S.cash < hireC)}
+      <span class="tile">${ic('i-desk', 'ic')}</span>
+      <div class="row__name">${esc(c.name)}<span class="pill">ур. ${st.lvl}</span></div>
+      <div class="row__sub">${ic('i-coin')}${fmt(counterPay(c))}
+        <span class="nx">→ ${fmt(counterPay(c) * 1.14)}</span></div>
+      <div class="row__sub">${st.clerk
+        ? `<span class="pill pill--ok">оператор ур. ${st.clerk}</span> ×${clerkSpeed(c).toFixed(2)}`
+        : '<span class="pill pill--gold">без оператора</span>'}</div>
+      ${btn('btn--ok btn--a', 'Улучшить', fmt(upC), 'i-coin', S.cash < upC)}
+      ${btn('btn--v btn--b', maxed ? 'Максимум' : st.clerk ? 'Оператор +' : 'Оператор',
+            maxed ? null : fmt(hireC), 'i-coin', maxed || S.cash < hireC)}
     </div>`).firstElementChild;
     const [bUp, bHire] = row.querySelectorAll('button');
-    if (S.cash >= upC) bUp.addEventListener('click', () => {
-      if (upgradeCounter(c)) { haptic(); refresh(); }
-    });
+    if (S.cash >= upC) bUp.addEventListener('click', () => { if (upgradeCounter(c)) { haptic(); refresh(); } });
     if (!maxed && S.cash >= hireC) bHire.addEventListener('click', () => {
-      if (hireClerk(c)) { haptic('success'); toast(`${c.name}: кассир нанят`); refresh(); }
+      if (hireClerk(c)) { haptic('success'); toast(`${c.name}: оператор нанят`); refresh(); }
     });
     list.appendChild(row);
   }
@@ -166,11 +159,11 @@ function staffView() {
     const st = S.atms[a.id];
     if (!st.open) continue;
     const upC = atmUpCost(a);
-    const row = h(`<div class="row row--btn">
-      <div class="row__art"><img src="./assets/ui/iphone_blue.png" alt=""></div>
-      <div class="row__name">${esc(a.name)} <span class="lvlpill">ур. ${st.lvl}</span></div>
-      <div class="row__stat"><img src="${COIN}" alt="">${fmt(atmRate(a))} / сек</div>
-      ${btn('btn--green btn--row', 'Улучшить', fmt(upC), COIN, S.cash < upC)}
+    const row = h(`<div class="row">
+      <span class="tile tile--cyan">${ic('i-locker', 'ic')}</span>
+      <div class="row__name">${esc(a.name)}<span class="pill">ур. ${st.lvl}</span></div>
+      <div class="row__sub">${ic('i-coin')}${fmt(atmRate(a))} в секунду</div>
+      ${btn('btn--ok btn--row', 'Улучшить', fmt(upC), 'i-coin', S.cash < upC)}
     </div>`).firstElementChild;
     if (S.cash >= upC) row.querySelector('button').addEventListener('click', () => {
       if (upgradeAtm(a)) { haptic(); refresh(); }
@@ -189,10 +182,7 @@ export function tasks() {
   setNav('tasks');
   open({
     title: 'Задания',
-    tabs: [
-      { label: 'На день', render: dailyView },
-      { label: 'Награды', render: achvView },
-    ],
+    tabs: [{ label: 'На день', render: dailyView }, { label: 'Достижения', render: achvView }],
   });
 }
 
@@ -208,20 +198,22 @@ export function dailyReady(t) {
 
 function dailyView() {
   const wrap = document.createElement('div');
+  const until = 86400 - (Date.now() / 1000) % 86400;
+  wrap.appendChild(h(`<div class="sect">Обновятся через ${dur(until)}</div>`).firstElementChild);
   const list = document.createElement('div');
   list.className = 'list';
   for (const t of S.daily.tasks) {
     const d = dailyDef(t.id);
     if (!d) continue;
-    const cur = Math.min(dailyProgress(t), d.goal);
+    const now = Math.min(dailyProgress(t), d.goal);
     const ready = dailyReady(t);
-    const row = h(`<div class="row row--btn">
-      <div class="row__art"><img src="./assets/tasks/xp.png" alt=""></div>
+    const row = h(`<div class="row">
+      <span class="tile ${t.done ? 'tile--ok' : ''}">${ic(t.done ? 'i-tasks' : 'i-box', 'ic')}</span>
       <div class="row__name">${esc(d.title)}</div>
-      <div class="row__stat">${cur} / ${d.goal}</div>
-      <div class="bar"><i style="width:${(cur / d.goal) * 100}%"></i></div>
-      ${btn(ready ? 'btn--gold btn--row' : 'btn--green btn--row', t.done ? 'Готово' : 'Забрать',
-            t.done ? null : String(d.gold), STAR, !ready)}
+      <div class="row__sub">${now} из ${d.goal}</div>
+      <div class="bar${ready || t.done ? ' bar--ok' : ''}"><i style="width:${(now / d.goal) * 100}%"></i></div>
+      ${btn(ready ? 'btn--gold btn--row' : 'btn--v btn--row', t.done ? 'Готово' : 'Забрать',
+            t.done ? null : String(d.gold), 'i-gem', !ready)}
     </div>`).firstElementChild;
     if (ready) row.querySelector('button').addEventListener('click', () => {
       t.done = true; S.gold += d.gold;
@@ -230,13 +222,13 @@ function dailyView() {
     list.appendChild(row);
   }
   const all = S.daily.tasks.length && S.daily.tasks.every((t) => t.done);
-  const bonus = h(`<div class="row row--btn">
-    <div class="row__art"><img src="./assets/tasks/chest2.png" alt=""></div>
+  const bonus = h(`<div class="row">
+    <span class="tile tile--gold">${ic('i-gift', 'ic')}</span>
     <div class="row__name">Все задания дня</div>
-    <div class="row__stat">${S.daily.tasks.filter((t) => t.done).length} / ${S.daily.tasks.length}</div>
-    ${btn(all && !S.daily.allDone ? 'btn--gold btn--row' : 'btn--green btn--row',
-          S.daily.allDone ? 'Готово' : 'Забрать', S.daily.allDone ? null : String(DAILY_ALL.gold), STAR,
-          !all || S.daily.allDone)}
+    <div class="row__sub">${S.daily.tasks.filter((t) => t.done).length} из ${S.daily.tasks.length}</div>
+    ${btn(all && !S.daily.allDone ? 'btn--gold btn--row' : 'btn--v btn--row',
+          S.daily.allDone ? 'Готово' : 'Забрать', S.daily.allDone ? null : String(DAILY_ALL.gold),
+          'i-gem', !all || S.daily.allDone)}
   </div>`).firstElementChild;
   if (all && !S.daily.allDone) bonus.querySelector('button').addEventListener('click', () => {
     S.daily.allDone = true; S.gold += DAILY_ALL.gold;
@@ -251,8 +243,8 @@ export function achvState(a) {
   const tier = S.achv[a.id] || 0;
   const maxed = tier >= a.tiers.length;
   const goal = maxed ? a.tiers[a.tiers.length - 1] : a.tiers[tier];
-  const cur = S.stats[a.stat] || 0;
-  return { tier, maxed, goal, cur, ready: !maxed && cur >= goal, gold: maxed ? 0 : a.gold[tier] };
+  const now = S.stats[a.stat] || 0;
+  return { tier, maxed, goal, cur: now, ready: !maxed && now >= goal, gold: maxed ? 0 : a.gold[tier] };
 }
 
 function achvView() {
@@ -262,13 +254,14 @@ function achvView() {
   for (const a of ACHIEVEMENTS) {
     const st = achvState(a);
     const val = a.money ? fmt : (n) => fmt(Math.floor(n));
-    const row = h(`<div class="row row--btn">
-      <div class="row__art"><img src="./assets/tasks/${st.maxed ? 'chest3' : 'chest1'}.png" alt=""></div>
-      <div class="row__name">${esc(a.title)} <span class="lvlpill">${Math.min(st.tier + 1, a.tiers.length)}/${a.tiers.length}</span></div>
-      <div class="row__stat">${val(Math.min(st.cur, st.goal))} / ${val(st.goal)}</div>
+    const row = h(`<div class="row">
+      <span class="tile ${st.maxed ? 'tile--gold' : ''}">${ic('i-up', 'ic')}</span>
+      <div class="row__name">${esc(a.title)}
+        <span class="pill">${Math.min(st.tier + 1, a.tiers.length)}/${a.tiers.length}</span></div>
+      <div class="row__sub">${val(Math.min(st.cur, st.goal))} из ${val(st.goal)}</div>
       <div class="bar bar--gold"><i style="width:${Math.min(100, (st.cur / st.goal) * 100)}%"></i></div>
-      ${btn(st.ready ? 'btn--gold btn--row' : 'btn--green btn--row', st.maxed ? 'Всё' : 'Забрать',
-            st.maxed ? null : String(st.gold), STAR, !st.ready)}
+      ${btn(st.ready ? 'btn--gold btn--row' : 'btn--v btn--row', st.maxed ? 'Всё' : 'Забрать',
+            st.maxed ? null : String(st.gold), 'i-gem', !st.ready)}
     </div>`).firstElementChild;
     if (st.ready) row.querySelector('button').addEventListener('click', () => {
       S.achv[a.id] = st.tier + 1; S.gold += st.gold;
@@ -280,34 +273,34 @@ function achvView() {
   return wrap;
 }
 
-// ── СЕЙФЫ ────────────────────────────────────────────────────────────────────
+// ── НАГРАДЫ ──────────────────────────────────────────────────────────────────
 
 export function safeReady() { return Date.now() >= (S.safe.freeAt || 0); }
 export function safeLeft() { return Math.max(0, ((S.safe.freeAt || 0) - Date.now()) / 1000); }
 
 export function safes() {
   setNav('safes');
-  open({ title: 'Сейфы', render: safesView });
+  open({ title: 'Награды', render: safesView });
 }
 
-function hourCash(h) {
-  const inc = shownIncome();
-  return Math.max(inc, 4) * 3600 * h;
-}
+function hourCash(hrs) { return Math.max(shownIncome(), 4) * 3600 * hrs; }
 
 function safesView() {
   const wrap = document.createElement('div');
+  wrap.appendChild(h('<div class="sect">Посылки с наградой</div>').firstElementChild);
   const grid = document.createElement('div');
   grid.className = 'grid3';
   for (const s of Object.values(SAFES)) {
     const ready = s.cd ? safeReady() : S.gold >= s.gold;
+    const tone = s.tone === 'gold' ? 'tile--gold' : s.tone === 'cyan' ? 'tile--cyan' : '';
     const card = h(`<div class="card">
       <div class="card__title">${esc(s.name)}</div>
-      <div class="card__art"><img src="${s.art}" alt=""></div>
-      <div class="card__gives"><b>${fmt(hourCash(s.cashMin))}</b>–${fmt(hourCash(s.cashMax))}</div>
+      <div class="card__art"><span class="tile ${tone}" style="position:static;width:calc(58 * var(--du));height:calc(58 * var(--du))">${ic(s.ic, 'ic')}</span></div>
+      <div class="card__sub">${fmt(hourCash(s.cashMin))}–${fmt(hourCash(s.cashMax))}</div>
       ${s.cd
-        ? (ready ? btn('btn--green btn--card', 'Открыть', null) : `<div class="lock btn--card">${clock(safeLeft())}</div>`)
-        : btn('btn--gold btn--card', 'Открыть', String(s.gold), STAR, !ready)}
+        ? (ready ? btn('btn--ok btn--card', 'Открыть', null)
+                 : `<button class="btn btn--card" disabled><span class="btn__t">${clock(safeLeft())}</span></button>`)
+        : btn('btn--gold btn--card', 'Открыть', String(s.gold), 'i-gem', !ready)}
     </div>`).firstElementChild;
     const b = card.querySelector('button');
     if (b && ready) b.addEventListener('click', () => {
@@ -318,44 +311,43 @@ function safesView() {
   }
   wrap.appendChild(grid);
 
-  wrap.appendChild(h('<div class="sect">Бусты</div>').firstElementChild);
+  wrap.appendChild(h('<div class="sect">Ускорители</div>').firstElementChild);
   const list = document.createElement('div');
   list.className = 'list';
   for (const b of Object.values(BOOSTS)) {
     const on = boostLeft(b.id);
     const freeIn = Math.max(0, ((S.freeBoost[b.id] || 0) - Date.now()) / 1000);
+    const tone = b.tone === 'gold' ? 'tile--gold' : b.tone === 'cyan' ? 'tile--cyan' : '';
     const row = h(`<div class="row row--two">
-      <div class="row__art"><img src="${b.art}" alt=""></div>
-      <div class="row__name">${esc(b.name)}${on ? ` <span class="lvlpill">${clock(on)}</span>` : ''}</div>
-      <div class="row__stat">${esc(b.desc)}</div>
+      <span class="tile ${tone}">${ic(b.ic, 'ic')}</span>
+      <div class="row__name">${esc(b.name)}${on ? `<span class="pill pill--ok">${clock(on)}</span>` : ''}</div>
+      <div class="row__sub">${esc(b.desc)}</div>
       ${freeIn > 0
-        ? `<div class="lock btn--a" style="height:calc(40 * var(--du))">${clock(freeIn)}</div>`
-        : btn('btn--green btn--a', 'Бесплатно', null)}
-      ${btn('btn--gold btn--b', 'Купить', String(b.gold), STAR, S.gold < b.gold)}
+        ? `<button class="btn btn--a" disabled><span class="btn__t">${clock(freeIn)}</span></button>`
+        : btn('btn--ok btn--a', 'Бесплатно', null)}
+      ${btn('btn--gold btn--b', 'Купить', String(b.gold), 'i-gem', S.gold < b.gold)}
     </div>`).firstElementChild;
     const bs = row.querySelectorAll('button');
-    const freeBtn = freeIn > 0 ? null : bs[0];
-    const goldBtn = bs[bs.length - 1];
-    freeBtn?.addEventListener('click', () => {
+    if (freeIn <= 0) bs[0].addEventListener('click', () => {
       S.freeBoost[b.id] = Date.now() + b.freeCd * 1000;
       startBoost(b.id); haptic('success'); toast(`${b.name} включён`); refresh();
     });
-    if (S.gold >= b.gold) goldBtn.addEventListener('click', () => {
+    if (S.gold >= b.gold) bs[1].addEventListener('click', () => {
       S.gold -= b.gold; startBoost(b.id); haptic('success'); toast(`${b.name} включён`); refresh();
     });
     list.appendChild(row);
   }
   wrap.appendChild(list);
 
-  wrap.appendChild(h('<div class="sect">Оффлайн</div>').firstElementChild);
+  wrap.appendChild(h('<div class="sect">Пока вас нет</div>').firstElementChild);
   const cap = offlineCapSec() / 3600;
   const cost = offlineUpCost();
-  const off = h(`<div class="row row--btn">
-    <div class="row__art"><img src="./assets/ui/box_energy.png" alt=""></div>
+  const off = h(`<div class="row">
+    <span class="tile tile--cyan">${ic('i-clock', 'ic')}</span>
     <div class="row__name">Копится ${cap} ${plural(cap, 'час', 'часа', 'часов')}</div>
-    <div class="row__stat"><img src="${COIN}" alt="">${fmt(autoIncome())} / сек без вас</div>
+    <div class="row__sub">${ic('i-coin')}${fmt(autoIncome())} в секунду без вас</div>
     ${btn('btn--gold btn--row', cap >= OFFLINE.maxCapHours ? 'Максимум' : 'Больше',
-          cap >= OFFLINE.maxCapHours ? null : String(cost), STAR,
+          cap >= OFFLINE.maxCapHours ? null : String(cost), 'i-gem',
           cap >= OFFLINE.maxCapHours || S.gold < cost)}
   </div>`).firstElementChild;
   if (cap < OFFLINE.maxCapHours && S.gold >= cost) off.querySelector('button').addEventListener('click', () => {
@@ -368,9 +360,8 @@ function safesView() {
 export function startBoost(id) {
   const d = BOOSTS[id];
   const now = Date.now();
-  const cur = S.boosts[id];
-  const from = cur && cur.until > now ? cur.until : now;
-  S.boosts[id] = { until: from + d.dur * 1000 };
+  const c = S.boosts[id];
+  S.boosts[id] = { until: (c && c.until > now ? c.until : now) + d.dur * 1000 };
   S.stats.boosts++;
   if (!S.daily.counters) S.daily.counters = {};
   S.daily.counters.boosts = (S.daily.counters.boosts || 0) + 1;
@@ -404,22 +395,23 @@ export function shop() {
 
 function shopView() {
   const wrap = document.createElement('div');
+  wrap.appendChild(h('<div class="sect">Кристаллы</div>').firstElementChild);
   const grid = document.createElement('div');
   grid.className = 'grid3';
   for (const p of SHOP_GOLD) {
-    const card = h(`<div class="card">
-      <div class="card__title">${p.tag || '&nbsp;'}</div>
-      <div class="card__art"><img src="${p.art}" alt=""></div>
-      <div class="card__gives"><b>${fmt(p.gold)}</b></div>
-      ${btn('btn--blue btn--card', 'Купить', String(p.stars), STAR)}
+    const card = h(`<div class="card"${p.best ? ' style="outline:calc(2 * var(--du)) solid var(--v1);outline-offset:calc(-2 * var(--du))"' : ''}>
+      <div class="card__title">${p.tag ? `<span class="pill pill--ok">${p.tag}</span>` : '&nbsp;'}</div>
+      <div class="card__art"><span class="ic" style="width:calc(${Math.round(52 * p.size)} * var(--du));height:calc(${Math.round(52 * p.size)} * var(--du))"><svg><use href="#i-gem"/></svg></span></div>
+      <div class="card__v">${ic('i-gem')}${fmt(p.gold)}</div>
+      ${btn('btn--v btn--card', 'Купить', String(p.stars), 'i-gem')}
     </div>`).firstElementChild;
     card.querySelector('button').addEventListener('click', () => {
-      window.__pay({ id: p.id, stars: p.stars, title: `${p.gold} золота`, give: { gold: p.gold } });
+      window.__pay({ id: p.id, stars: p.stars, title: `${p.gold} кристаллов`, give: { gold: p.gold } });
     });
     grid.appendChild(card);
   }
   wrap.appendChild(grid);
-  wrap.appendChild(h(`<div class="empty">Оплата — звёздами Telegram</div>`).firstElementChild);
+  wrap.appendChild(h('<div class="empty">Оплата — звёздами Telegram</div>').firstElementChild);
   return wrap;
 }
 
@@ -427,23 +419,22 @@ function shopView() {
 
 export function offline(p, onTake) {
   open({
-    title: 'Пока вас нет',
-    render: () => h(`<div class="card" style="text-align:center;padding:calc(16 * var(--du))">
-        <div class="card__art" style="width:auto;height:calc(96 * var(--du))">
-          <img src="./assets/ui/box_energy.png" alt=""></div>
-        <div class="row__name" style="justify-content:center;font-size:calc(18 * var(--du))">
-          <img src="${COIN}" style="width:calc(22 * var(--du));height:calc(22 * var(--du))" alt="">
-          ${fmt(p.amount)}</div>
-        <div class="row__stat" style="justify-content:center">За ${dur(p.seconds)}</div>
+    title: 'Пункт работал без вас',
+    render: () => h(`<div class="card" style="padding:calc(20 * var(--du))">
+        <div class="card__art" style="height:calc(84 * var(--du))">
+          <span class="tile" style="position:static;width:calc(76 * var(--du));height:calc(76 * var(--du));border-radius:calc(24 * var(--du))">
+            ${ic('i-box', 'ic')}</span></div>
+        <div class="card__v" style="font-size:calc(24 * var(--du))">${ic('i-coin')}${fmt(p.amount)}</div>
+        <div class="card__sub">За ${dur(p.seconds)}${p.capped ? ` · потолок ${offlineCapSec() / 3600} ч` : ''}</div>
       </div>`),
     cap: () => {
       const el = h(`
-        <img class="win__cap-ico" src="./assets/ui/hud_coin.png" alt="">
+        <span class="tile tile--ok">${ic('i-coin', 'ic')}</span>
         <div class="win__cap-txt">
-          <div class="win__cap-t1">Банк работал</div>
-          <div class="win__cap-t2">${p.capped ? `Потолок ${offlineCapSec() / 3600} ч` : 'Выручка в кассе'}</div>
+          <div class="win__cap-t1">Выручка в кассе</div>
+          <div class="win__cap-t2">${p.capped ? 'Увеличьте потолок в «Наградах»' : 'Заказы выдавали операторы'}</div>
         </div>
-        ${btn('btn--cap', 'Забрать', fmt(p.amount), COIN)}`);
+        ${btn('btn--ok', 'Забрать', fmt(p.amount), 'i-coin')}`);
       el.querySelector('button').addEventListener('click', () => { onTake(); close(); });
       return el;
     },
@@ -458,9 +449,9 @@ export function updateBadges() {
   const a = ACHIEVEMENTS.filter((x) => achvState(x).ready).length;
   setBadge('tasks', d + a);
   setBadge('safes', safeReady() ? 1 : 0);
-  const staffN = COUNTERS.filter((c) => S.counters[c.id].open && S.cash >= counterUpCost(c)).length
+  const st = COUNTERS.filter((c) => S.counters[c.id].open && S.cash >= counterUpCost(c)).length
     + (S.cash >= runnerCost() && S.runner === 0 ? 1 : 0);
-  setBadge('staff', Math.min(9, staffN));
+  setBadge('staff', Math.min(9, st));
 }
 
 export const screens = { staff, tasks, safes, shop, offline, close, refresh, isOpen, updateBadges };

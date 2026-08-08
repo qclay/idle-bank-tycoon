@@ -3,13 +3,105 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0c1b2a">
-<title>Idle Bank Tycoon</title>
-<link rel="icon" href="./assets/ui/tab_leaders.png">
+<meta name="theme-color" content="#1B1236">
+<title>Пункт выдачи — Idle Tycoon</title>
+<link rel="icon" href="./assets/ui/coin.png">
 <link rel="stylesheet" href="./css/ui.css">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
+
+<svg class="sprite" aria-hidden="true"><defs>
+  <symbol id="i-box" viewBox="0 0 24 24">
+    <path d="M12 2.4 21.2 6.6v10.8L12 21.6 2.8 17.4V6.6z" fill="currentColor" opacity=".22"/>
+    <path d="M12 2.4 21.2 6.6 12 10.9 2.8 6.6z" fill="currentColor"/>
+    <path d="M2.8 6.6 12 10.9v10.7L2.8 17.4z" fill="currentColor" opacity=".62"/>
+    <path d="M21.2 6.6 12 10.9v10.7l9.2-4.2z" fill="currentColor" opacity=".42"/>
+    <path d="M7.2 4.5 16.6 8.8v3l-2.2 1V9.9L7.2 6.7z" fill="#fff" opacity=".85"/>
+  </symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24">
+    <rect x="4" y="2.6" width="16" height="18.8" rx="3.4" fill="currentColor" opacity=".22"/>
+    <rect x="4" y="2.6" width="16" height="18.8" rx="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="m7.6 9.4 2 2 4.2-4.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7.6 15.6h8.8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-staff" viewBox="0 0 24 24">
+    <circle cx="9" cy="7.6" r="3.6" fill="currentColor"/>
+    <path d="M2.6 20.4c0-3.6 2.9-5.8 6.4-5.8s6.4 2.2 6.4 5.8z" fill="currentColor"/>
+    <circle cx="17.2" cy="8.6" r="2.9" fill="currentColor" opacity=".55"/>
+    <path d="M13.6 20.4c0-3 2.1-4.8 4.4-4.8 2 0 3.4 1.4 3.4 4.8z" fill="currentColor" opacity=".55"/>
+  </symbol>
+  <symbol id="i-gift" viewBox="0 0 24 24">
+    <rect x="3" y="9.4" width="18" height="11.8" rx="2.6" fill="currentColor" opacity=".28"/>
+    <rect x="2.2" y="6.4" width="19.6" height="4.6" rx="1.8" fill="currentColor"/>
+    <rect x="10.2" y="6.4" width="3.6" height="14.8" fill="currentColor"/>
+    <path d="M12 6.2C10.6 3 8.2 2.2 7.1 3.3s-.3 3.3 4.9 2.9M12 6.2c1.4-3.2 3.8-4 4.9-2.9s.3 3.3-4.9 2.9"
+      fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-shop" viewBox="0 0 24 24">
+    <path d="M3 4.4h2.6l2.5 10.4h9.1l2.2-7.6H7" fill="none" stroke="currentColor" stroke-width="2.1"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="9.6" cy="19" r="1.9" fill="currentColor"/>
+    <circle cx="16.6" cy="19" r="1.9" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-coin" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9.4" fill="#F6B93B"/>
+    <circle cx="12" cy="12" r="9.4" fill="none" stroke="#C97F12" stroke-width="1.6"/>
+    <circle cx="12" cy="12" r="6.6" fill="#FFD874"/>
+    <path d="M12 7.6v8.8M9.6 9.6h3.3a1.9 1.9 0 0 1 0 3.8H9.6h4.6" fill="none" stroke="#B4700C"
+      stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-gem" viewBox="0 0 24 24">
+    <path d="M6.4 3.2h11.2L22 9.1 12 21.2 2 9.1z" fill="#6EE7F9"/>
+    <path d="M6.4 3.2 2 9.1h20l-4.4-5.9z" fill="#A5F3FC"/>
+    <path d="M12 21.2 2 9.1h20z" fill="#22D3EE" opacity=".75"/>
+    <path d="M6.4 3.2 9 9.1l3 12.1L15 9.1l2.6-5.9" fill="none" stroke="#0E7490" stroke-width="1.3" opacity=".5"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 24 24">
+    <path d="M7 7l10 10M17 7 7 17" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24">
+    <rect x="4.6" y="10" width="14.8" height="10.8" rx="3" fill="currentColor"/>
+    <path d="M8.2 10V7.6a3.8 3.8 0 0 1 7.6 0V10" fill="none" stroke="currentColor" stroke-width="2.2"/>
+  </symbol>
+  <symbol id="i-up" viewBox="0 0 24 24">
+    <path d="M12 4.6 19.4 12h-4v7.4h-6.8V12h-4z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.1"/>
+    <path d="M12 6.8V12l3.4 2.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24">
+    <path d="M13.6 2 5 13.4h5.2L9.4 22 19 10.2h-5.4z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-locker" viewBox="0 0 24 24">
+    <rect x="4" y="2.8" width="16" height="18.4" rx="2.4" fill="currentColor" opacity=".25"/>
+    <rect x="4" y="2.8" width="16" height="18.4" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <path d="M4 9.2h16M4 15.2h16M12 2.8v18.4" stroke="currentColor" stroke-width="1.5" opacity=".8"/>
+    <circle cx="9.4" cy="6" r=".9" fill="currentColor"/><circle cx="17.4" cy="6" r=".9" fill="currentColor"/>
+    <circle cx="9.4" cy="12.2" r=".9" fill="currentColor"/><circle cx="17.4" cy="12.2" r=".9" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24">
+    <path d="M3.4 6.6h3l1 3m0 0 2 7.4h9.4l2-7.4z" fill="currentColor" opacity=".3"/>
+    <path d="M3.4 6.6h3l3 10.4h9.4l2-7.4H7.4" fill="none" stroke="currentColor" stroke-width="2.1"
+      stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-run" viewBox="0 0 24 24">
+    <circle cx="15" cy="4.6" r="2.4" fill="currentColor"/>
+    <path d="M13.4 8.2 9.6 10l-2 4.4M13.4 8.2l3.4 2.2.8 4M13.4 8.2l-1.6 5.2 3 2.6 1 5.4M11.8 13.4l-4.6 3.2L4 20.6"
+      fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24">
+    <path d="M4.8 8h14.4l1.2 12.4H3.6z" fill="currentColor" opacity=".3"/>
+    <path d="M4.8 8h14.4l1.2 12.4H3.6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M8.6 10V6.6a3.4 3.4 0 0 1 6.8 0V10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-desk" viewBox="0 0 24 24">
+    <rect x="2.6" y="10.4" width="18.8" height="3.4" rx="1.2" fill="currentColor"/>
+    <path d="M5 13.8v6.6M19 13.8v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    <rect x="7" y="3.6" width="10" height="6.2" rx="1.6" fill="currentColor" opacity=".4"/>
+  </symbol>
+</defs></svg>
 
 <div id="app">
   <div id="stage"></div>
@@ -17,62 +109,37 @@
 
   <header id="hud">
     <div class="hud-row">
-      <div class="chip chip--cash">
-        <i class="chip__pill"><i></i></i>
-        <img class="chip__ico" src="./assets/ui/hud_coin.png" alt="">
-        <b class="chip__val" id="cash">0</b>
+      <div class="cap cap--cash">
+        <span class="cap__ic"><svg><use href="#i-coin"/></svg></span>
+        <b class="cap__v" id="cash">0</b>
       </div>
-      <button class="chip chip--gold" id="goldPill">
-        <i class="chip__pill"><i></i></i>
-        <img class="chip__ico" src="./assets/ui/hud_star.png" alt="">
-        <b class="chip__val" id="gold">0</b>
+      <button class="cap cap--gem" id="goldPill">
+        <span class="cap__ic"><svg><use href="#i-gem"/></svg></span>
+        <b class="cap__v" id="gold">0</b>
+        <i class="cap__add">+</i>
       </button>
-
-      <div class="xpbar">
-        <img class="xpbar__star" src="./assets/ui/lvlstar.png" alt="">
-        <b class="xpbar__n" id="lvlN">1</b>
-        <i class="gbar"><i class="gbar__in"><i class="gbar__groove"><i class="gbar__fill" id="lvlFill"></i></i></i></i>
-        <span class="xpbar__num" id="xpNum">0 / 0</span>
-      </div>
+    </div>
+    <div class="lvl">
+      <span class="lvl__n" id="lvlN">1</span>
+      <span class="lvl__track"><i class="lvl__fill" id="lvlFill"></i></span>
+      <span class="lvl__num" id="xpNum">0 / 0</span>
     </div>
   </header>
 
   <div id="carry" hidden>
-    <img class="carry__ico" src="./assets/ui/coin.png" alt="">
-    <i class="gbar gbar--gold"><i class="gbar__in"><i class="gbar__groove"><i class="gbar__fill" id="carryFill"></i></i></i></i>
+    <span class="carry__ic"><svg><use href="#i-bag"/></svg></span>
+    <span class="carry__track"><i class="carry__fill" id="carryFill"></i></span>
     <b class="carry__n" id="carryTxt">0</b>
   </div>
 
   <div id="joy"><div id="joyBase"></div><div id="joyKnob"></div></div>
 
   <nav id="nav">
-    <svg class="nav__frame" viewBox="-1.22 -1.22 360.44 75.44" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="nbF1" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#89683E"/><stop offset="1" stop-color="#AC7B3C"/></linearGradient>
-        <linearGradient id="nbF2" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#EBC57E"/><stop offset=".5" stop-color="#D57C01" stop-opacity=".5"/>
-          <stop offset="1" stop-color="#D6A559"/></linearGradient>
-        <linearGradient id="nbF3" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#F5E3B5"/><stop offset="1" stop-color="#EDCC87"/></linearGradient>
-        <linearGradient id="nbS3" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#F9EAC4"/><stop offset=".48" stop-color="#DEA842" stop-opacity="0"/>
-          <stop offset="1" stop-color="#D2AA6B"/></linearGradient>
-        <linearGradient id="nbS5" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#E8C37B"/><stop offset="1" stop-color="#D8A95D"/></linearGradient>
-      </defs>
-      <rect x="0" y="0" width="358" height="73" rx="13.42" fill="url(#nbF1)"/>
-      <rect x="1" y="1" width="356" height="71" rx="13.42" fill="url(#nbF2)"/>
-      <rect x="4" y="4" width="350" height="65" rx="10.98" fill="url(#nbF3)"/>
-      <rect x="4.61" y="4.61" width="348.78" height="63.78" rx="10.37" fill="none" stroke="url(#nbS3)" stroke-width="1.22"/>
-      <rect x="3.39" y="3.39" width="351.22" height="66.22" rx="11.59" fill="none" stroke="url(#nbS5)" stroke-width="1.22"/>
-    </svg>
-    <i class="nav-hl" id="navHl"></i>
-    <button class="nav-btn is-on" data-tab="bank"  style="--cx:37"><img src="./assets/ui/tab_game.png" alt=""><b>Банк</b></button>
-    <button class="nav-btn" data-tab="tasks"       style="--cx:104"><img src="./assets/ui/tab_tasks.png" alt=""><b>Задания</b><i class="badge" hidden></i></button>
-    <button class="nav-btn" data-tab="staff"       style="--cx:171"><img src="./assets/ui/tab_friends.png" alt=""><b>Персонал</b><i class="badge" hidden></i></button>
-    <button class="nav-btn" data-tab="safes"       style="--cx:238"><img src="./assets/ui/tab_presents.png" alt=""><b>Сейфы</b><i class="badge" hidden></i></button>
-    <button class="nav-btn" data-tab="shop"        style="--cx:305"><img src="./assets/ui/tab_shop.png" alt=""><b>Магазин</b></button>
+    <button class="nav-btn is-on" data-tab="bank"><span class="nav-btn__ic"><svg><use href="#i-box"/></svg></span><b>Пункт</b></button>
+    <button class="nav-btn" data-tab="tasks"><span class="nav-btn__ic"><svg><use href="#i-tasks"/></svg></span><b>Задания</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="staff"><span class="nav-btn__ic"><svg><use href="#i-staff"/></svg></span><b>Персонал</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="safes"><span class="nav-btn__ic"><svg><use href="#i-gift"/></svg></span><b>Награды</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="shop"><span class="nav-btn__ic"><svg><use href="#i-shop"/></svg></span><b>Магазин</b></button>
   </nav>
 
   <div id="winRoot"></div>
@@ -81,8 +148,9 @@
 
 <div id="boot">
   <div class="boot-in">
-    <img src="./assets/ui/tab_leaders.png" alt="">
-    <b>Idle Bank Tycoon</b>
+    <span class="boot-logo"><svg><use href="#i-box"/></svg></span>
+    <b>Пункт выдачи</b>
+    <span class="boot-sub">Idle Tycoon</span>
     <div class="boot-bar"><i id="bootBar"></i></div>
   </div>
 </div>

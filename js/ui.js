@@ -21,7 +21,7 @@ export function initUI() {
   els = {
     cash: $('#cash'), gold: $('#gold'), lvlN: $('#lvlN'), lvlFill: $('#lvlFill'),
     carry: $('#carry'), carryFill: $('#carryFill'), carryTxt: $('#carryTxt'),
-    xpNum: $('#xpNum'), cashChip: $('.chip--cash'),
+    xpNum: $('#xpNum'), cashChip: $('.cap--cash'),
     joy: $('#joy'), base: $('#joyBase'), knob: $('#joyKnob'),
     worldUI: $('#worldUI'), toasts: $('#toasts'), nav: $('#nav'), hud: $('#hud'),
   };
@@ -34,11 +34,7 @@ export function initUI() {
 }
 
 export function setNav(tab) {
-  $$('.nav-btn').forEach((b) => {
-    const on = b.dataset.tab === tab;
-    b.classList.toggle('is-on', on);
-    if (on) $('#navHl').style.setProperty('--hlcx', b.style.getPropertyValue('--cx'));
-  });
+  $$('.nav-btn').forEach((b) => b.classList.toggle('is-on', b.dataset.tab === tab));
 }
 
 // ── Джойстик ─────────────────────────────────────────────────────────────────
@@ -135,10 +131,10 @@ export function tickWorldTags() {
     let t = tags.get(p.id);
     if (!t) {
       t = document.createElement('div');
-      t.className = 'wtag' + (p.kind === 'up' ? '' : ' wtag--buy');
+      t.className = 'wtag ' + (p.kind === 'up' ? 'wtag--up' : 'wtag--buy');
       t.innerHTML = `<div class="wtag__sign">
         <div class="wtag__t"></div>
-        <div class="wtag__p"><img src="./assets/ui/coin.png" alt=""><b></b></div>
+        <div class="wtag__p"><span class="ic"><svg><use href="#i-coin"/></svg></span><b></b></div>
         <div class="wtag__bar"><i></i></div></div>`;
       els.worldUI.appendChild(t);
       tags.set(p.id, t);
@@ -224,5 +220,5 @@ export function setBadge(tab, n) {
 export function hudInsets() {
   const d = du();
   return { top: 56 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0),
-           bottom: 92 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
+           bottom: 90 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
 }
