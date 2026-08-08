@@ -4,7 +4,8 @@ import { fmt, du, clamp } from './core.js';
 import { S, save } from './state.js';
 import { xpForLevel } from './balance.js';
 import { pads } from './game.js';
-import { COUNTERS, VAULT } from './balance.js';
+import { COUNTERS, VAULT, DISTRICT } from './balance.js';
+import * as district from './district.js';
 import { clerkSpot } from './actors.js';
 import { player } from './actors.js';
 import { bagCap } from './actors.js';
@@ -124,6 +125,7 @@ export function tickHud(dt) {
 const tags = new Map();
 
 export function tickWorldTags() {
+  tickFoeMarker();
   const list = pads();
   const seen = new Set();
   for (const p of list) {
@@ -190,6 +192,51 @@ function hint(id, text, x, y, seen) {
 }
 
 export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
+
+// ── Указатель на соперника ───────────────────────────────────────────────────
+// Здание стоит через дорогу и часто вне кадра — без указателя игрок его
+// просто не находит.
+
+let foeEl = null;
+export function tickFoeMarker() {
+  if (!foeEl) {
+    foeEl = document.createElement('button');
+    foeEl.className = 'foemark';
+    foeEl.innerHTML = `<i class="foemark__arrow"></i>
+      <span class="foemark__body">
+        <b class="foemark__t"></b>
+        <span class="foemark__s"><i class="me"></i><i class="foe"></i></span>
+      </span>`;
+    foeEl.addEventListener('click', () => window.__openTab('tasks', 'district'));
+    els.worldUI.appendChild(foeEl);
+  }
+  const F = scene.FOE;
+  const p = scene.screenOf((F.x0 + F.x1) / 2, F.door.y, 3.4);
+  const W = scene.viewW(), H = scene.viewH();
+  const ins = hudInsets();
+  const pad = 26 * du();
+  const minY = ins.top + pad, maxY = H - ins.bottom - pad;
+  const minX = pad, maxX = W - pad;
+  const off = p.x < minX || p.x > maxX || p.y < minY || p.y > maxY;
+  const x = Math.max(minX, Math.min(maxX, p.x));
+  const y = Math.max(minY, Math.min(maxY, p.y));
+  foeEl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%,-100%)`;
+  foeEl.classList.toggle('is-off', off);
+  if (off) {
+    const a = Math.atan2(p.y - y, p.x - x) * 180 / Math.PI;
+    foeEl.querySelector('.foemark__arrow').style.transform = `rotate(${a}deg)`;
+  }
+  const d = S.district;
+  if (d) {
+    const my = Math.floor(d.my), foe = Math.floor(d.foe);
+    const tt = foeEl.querySelector('.foemark__t');
+    const txt = `${DISTRICT.name} · ${fmt(my)} : ${fmt(foe)}`;
+    if (tt.textContent !== txt) tt.textContent = txt;
+    const total = Math.max(1, my + foe);
+    foeEl.querySelector('.me').style.width = `${(my / total) * 100}%`;
+    foeEl.classList.toggle('is-lead', my >= foe);
+  }
+}
 
 // ── Тосты ────────────────────────────────────────────────────────────────────
 

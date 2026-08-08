@@ -20,6 +20,7 @@ const res = await p.evaluate(async () => {
   // подходим с 8 сторон и стоим совсем недолго: важно, что оплата ПОШЛА,
   // а не что покупка успела завершиться
   const approach = (pad, angle) => {
+    S.cash = Math.max(1e9, pad.cost * 4);   // кошелёк не должен пустеть между заходами
     const cx = pad.x + pad.w / 2, cy = pad.y + pad.h / 2;
     actors.player.x = cx + Math.cos(angle) * 2.6;
     actors.player.y = cy + Math.sin(angle) * 2.6;

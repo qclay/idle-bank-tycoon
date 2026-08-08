@@ -227,13 +227,14 @@ function zonesView() {
 
 // ── ЗАДАНИЯ ──────────────────────────────────────────────────────────────────
 
-export function tasks() {
+export function tasks(sub) {
   setNav('tasks');
-  open({
+  const m = open({
     title: 'Задания',
     tabs: [{ label: 'На день', render: dailyView }, { label: 'Район', render: districtView },
             { label: 'Награды', render: achvView }],
   });
+  if (sub === 'district') m.el.querySelectorAll('.win__tab')[1]?.click();
 }
 
 function dailyDef(id) { return DAILY_POOL.find((d) => d.id === id); }
@@ -399,7 +400,12 @@ export function safes() {
   open({ title: 'Награды', render: safesView });
 }
 
-function hourCash(hrs) { return Math.max(shownIncome(), 4) * 3600 * hrs; }
+/** Награда считается от РЕАЛЬНОГО дохода. Раньше здесь стоял пол в 4/с —
+ *  втрое выше стартовой экономики, и первая же посылка ломала весь темп. */
+function hourCash(hrs) {
+  const floor = COUNTERS[0].base * 0.12;      // чтобы на самом старте награда не была нулевой
+  return Math.max(shownIncome(), floor) * 3600 * hrs;
+}
 
 function safesView() {
   const wrap = document.createElement('div');

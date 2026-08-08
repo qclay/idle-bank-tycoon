@@ -306,6 +306,26 @@ svg{width:100%;height:100%;display:block}
 .wtag--hint .wtag__t{font-size:calc(11 * var(--du))}
 @keyframes hintPulse{0%,100%{transform:translateY(0)}50%{transform:translateY(calc(-5 * var(--du)))}}
 
+/* указатель на конкурента: над зданием, а если оно вне кадра — у края со стрелкой */
+.foemark{position:absolute;left:0;top:0;pointer-events:auto;display:flex;flex-direction:column;
+  align-items:center;gap:calc(3 * var(--du));transition:opacity .2s}
+.foemark__body{display:flex;flex-direction:column;align-items:center;
+  padding:calc(5 * var(--du)) calc(11 * var(--du));border-radius:calc(13 * var(--du));
+  background:var(--glass);backdrop-filter:blur(calc(6 * var(--du)));
+  box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(226,74,106,.85),
+             0 calc(3 * var(--du)) calc(8 * var(--du)) rgba(0,0,0,.34)}
+.foemark.is-lead .foemark__body{box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(74,222,128,.85),
+  0 calc(3 * var(--du)) calc(8 * var(--du)) rgba(0,0,0,.34)}
+.foemark__t{color:#fff;font-size:calc(10 * var(--du));font-weight:900;white-space:nowrap}
+.foemark__s{display:flex;width:calc(96 * var(--du));height:calc(6 * var(--du));
+  border-radius:calc(3 * var(--du));overflow:hidden;background:#E24A6A;margin-top:calc(3 * var(--du))}
+.foemark__s .me{background:linear-gradient(90deg,#A78BFA,var(--v1));width:50%}
+.foemark__arrow{display:none;width:calc(16 * var(--du));height:calc(16 * var(--du));
+  background:#E24A6A;clip-path:polygon(100% 50%, 20% 0, 40% 50%, 20% 100%)}
+.foemark.is-off .foemark__arrow{display:block}
+.foemark.is-off.is-lead .foemark__arrow{background:var(--ok)}
+.foemark:active{transform-origin:50% 100%}
+
 /* всплывающие числа */
 .fxnum{position:absolute;left:0;top:0;transform-origin:50% 100%;white-space:nowrap;pointer-events:none;
   color:#fff;font-size:calc(18 * var(--du));font-weight:900;letter-spacing:-.02em;

@@ -279,7 +279,7 @@ function buildStreet() {
   const g = new Graphics();
   const W = HALL.w, H = HALL.h;
   const w1 = STREET.walk, rd = STREET.road, fr = STREET.far;
-  const a1 = -w1, a2 = -(w1 + rd), a3 = -(w1 + rd + fr), a4 = a3 - 2.6;
+  const a1 = -w1, a2 = -(w1 + rd), a3 = -(w1 + rd + fr), a4 = a3 - STREET.facade;
 
   // тротуар у здания
   isoRhomb(g, a4, a1, W + 2, 0, 0, 0xd8d3e6);
@@ -304,7 +304,7 @@ function buildStreet() {
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   for (let x = a3; x < W + 2; x += 3.2) {
     if (x > FOE.x0 - 3.1 && x < FOE.x1) continue;      // здесь стоит конкурент
-    const hh = 3.4 + rnd() * 3.6;
+    const hh = 2.6 + rnd() * 2.6;
     const c = FAC[Math.floor(rnd() * FAC.length)];
     isoBox(g, x, a4, x + 2.8, a3, 0, hh, c, { sheen: false });
     for (let f = 0; f < Math.floor(hh / 1.15); f++) {
@@ -313,7 +313,7 @@ function buildStreet() {
   }
   drawFoe(g, a3, a4);
   for (let y = a3; y < H + 2; y += 3.2) {
-    const hh = 3.4 + rnd() * 3.6;
+    const hh = 2.6 + rnd() * 2.6;
     const c = FAC[Math.floor(rnd() * FAC.length)];
     isoBox(g, a4, y, a3, y + 2.8, 0, hh, c, { sheen: false });
     for (let f = 0; f < Math.floor(hh / 1.15); f++) {
@@ -571,14 +571,14 @@ export function drawCashPile(cont, x, y, z, ratio) {
 }
 
 /** Пункт конкурента напротив: вывеска, витрина, вход и фургон. */
-export const FOE = { x0: 8.4, x1: 14.6, door: { x: 11.5, y: 0 } };
+export const FOE = { x0: -5.2, x1: 0.8, door: { x: -2.2, y: 0 } };
 
 function drawFoe(g, a3, a4) {
   const x0 = FOE.x0, x1 = FOE.x1;
   FOE.door.y = a3;
   const brand = 0xE24A6A;
   // корпус
-  isoBox(g, x0, a4, x1, a3, 0, 4.6, 0xEDE7F5, { sheen: false });
+  isoBox(g, x0, a4, x1, a3, 0, 3.8, 0xEDE7F5, { sheen: false });
   // цоколь и витрина
   isoBox(g, x0, a3 - 0.06, x1, a3 - 0.02, 0.2, 1.9, 0xBFE4F5, { ow: 1.6 });
   // вход
@@ -684,7 +684,7 @@ export function tickTraffic(dt) {
       t.view.zIndex = depth(x, y);
     } else if (t.kind === 'foe') {
       // идут вдоль дальнего тротуара к двери конкурента и «заходят»
-      const lane = -(STREET.walk + STREET.road + STREET.far * 0.55);
+      const lane = -(STREET.walk + STREET.road + STREET.far * 0.5);
       const goal = FOE.door.x;
       const start = goal + 9;
       const x = start - t.t;
@@ -852,17 +852,18 @@ const WALL_Z = 2.6;
 
 /** Габариты зала в координатах сцены — по ним считаем масштаб и упор камеры. */
 function bounds() {
-  // сверху видно улицу за стенами, снизу — только узкий тротуар у входа
-  const back = STREET.walk + STREET.road + STREET.far * 0.5;
+  // Верх должен доставать до крыш домов напротив, иначе камера туда не едет
+  // и соперника не увидеть.
+  const far = STREET.walk + STREET.road + STREET.far + STREET.facade;
   return {
-    left: px(-back, HALL.h + 1).x - 20,
-    right: px(HALL.w + 1, -back).x + 20,
-    top: px(-back, -back).y - 20,
+    left: px(-far, HALL.h + 1).x - 20,
+    right: px(HALL.w + 1, -far).x + 20,
+    top: px(-far, -far).y - 7 * ZU - 20,
     bottom: px(HALL.w + 1, HALL.h + 1.3).y + 20,
   };
 }
 
-let viewH = 0;
+let fitH = 0;                 // высота кадра, под которую подобран масштаб
 const insets = { top: 0, bottom: 0 };
 
 export function fitCamera(hudTop = 0, hudBottom = 0) {
@@ -870,7 +871,7 @@ export function fitCamera(hudTop = 0, hudBottom = 0) {
   const b = bounds();
   const h = Math.max(120, app.screen.height - hudTop - hudBottom);
   const w = app.screen.width;
-  viewH = h;
+  fitH = h;
   // Изометрический зал всегда шире, чем выше (2:1), поэтому в портрет он целиком
   // не влезает — камера ездит за игроком. Масштаб подбираем так, чтобы в кадре
   // было ~7 тайлов по ширине, но зал не оказался мельче экрана по высоте.
@@ -883,14 +884,15 @@ export function fitCamera(hudTop = 0, hudBottom = 0) {
 export function follow(x, y, hudTop = 0, hudBottom = 0) {
   if (!app) return;
   insets.top = hudTop; insets.bottom = hudBottom;
-  if (Math.abs(viewH - (app.screen.height - hudTop - hudBottom)) > 2) fitCamera(hudTop, hudBottom);
+  if (Math.abs(fitH - (app.screen.height - hudTop - hudBottom)) > 2) fitCamera(hudTop, hudBottom);
   const p = px(x, y, 0);
   const w = app.screen.width, h = app.screen.height;
   const s = cam.scale;
   const b = bounds();
 
   let tx = w / 2 - p.x * s;
-  let ty = hudTop + (h - hudTop - hudBottom) / 2 - p.y * s;
+  // держим героя ниже центра: сверху должно оставаться место под улицу
+  let ty = hudTop + (h - hudTop - hudBottom) * 0.62 - p.y * s;
 
   // не пускаем камеру за края зала
   const roomW = (b.right - b.left) * s;
@@ -915,3 +917,7 @@ export function screenOf(x, y, z = 0) {
 }
 
 export function sortItems() { items.sortChildren(); }
+
+/** Размеры кадра — нужны DOM-слою, чтобы прижимать указатели к краям. */
+export function viewW() { return app ? app.screen.width : window.innerWidth; }
+export function viewH() { return app ? app.screen.height : window.innerHeight; }

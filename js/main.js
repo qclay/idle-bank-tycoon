@@ -1,5 +1,6 @@
 // Точка входа: загрузка, постройка зала, игровой цикл.
 
+import * as BAL from './balance.js';
 import { COUNTERS, ATMS, ZONES, SAVE_EVERY } from './balance.js';
 import { S, bootState, loadLocal, save, rollDaily, onChange } from './state.js';
 import * as scene from './scene.js';
@@ -15,10 +16,10 @@ import * as fx from './fx.js';
 const views = { counters: new Map(), atms: new Map(), zones: new Map(), piles: new Map(), pads: new Map() };
 let vaultView = null;
 
-window.__openTab = (tab) => {
+window.__openTab = (tab, sub) => {
   if (tab === 'bank') { screens.close(); ui.setNav('bank'); return; }
   if (screens.isOpen()) screens.close(true);
-  if (tab === 'tasks') screens.tasks();
+  if (tab === 'tasks') screens.tasks(sub);
   else if (tab === 'staff') screens.staff();
   else if (tab === 'safes') screens.safes();
   else if (tab === 'shop') screens.shop();
@@ -238,3 +239,4 @@ boot().catch((e) => {
 
 // отладочный доступ для тестов
 window.__game = { S, game, actors, scene, ui, screens, district };
+window.__balance = BAL;   // для инструментов замера темпа

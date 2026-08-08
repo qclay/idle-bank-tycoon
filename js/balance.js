@@ -9,42 +9,42 @@ export const HALL = { w: 24, h: 15 };
 export const VAULT = { x: 1, y: 1, w: 2.6, h: 1.6, drop: { x: 2.3, y: 3.5 } };
 
 // Улица снаружи: тротуар, дорога, дальний тротуар с фасадами
-export const STREET = { walk: 2.4, road: 3.6, far: 2.2 };
+export const STREET = { walk: 1.6, road: 2.6, far: 1.2, facade: 2.2 };
 export const DOOR = { x: 21.5, y: 14.4 };          // вход: отсюда приходят клиенты
 export const START = { x: 12, y: 11 };             // где игрок стоит на старте
 
 // Стойки выдачи: cost — цена открытия, base — выручка с одного клиента на 1 ур.
 export const COUNTERS = [
   { id: 'c1', name: 'Выдача заказов', x: 6,  y: 2, cost: 0,      base: 12,    tone: 0x7C3AED },
-  { id: 'c2', name: 'Примерочная',    x: 11, y: 2, cost: 900,    base: 46,    tone: 0x0EA5E9 },
-  { id: 'c3', name: 'Приём возвратов',x: 16, y: 2, cost: 9000,   base: 190,   tone: 0x22C55E },
-  { id: 'c4', name: 'Крупногабарит',  x: 6,  y: 8, cost: 78000,  base: 760,   tone: 0xF59E0B },
-  { id: 'c5', name: 'Экспресс-выдача',x: 11, y: 8, cost: 640000, base: 3000,  tone: 0xEC4899 },
-  { id: 'c6', name: 'Premium-зона',   x: 16, y: 8, cost: 5.2e6,  base: 12000, tone: 0x14B8A6 },
+  { id: 'c2', name: 'Примерочная',    x: 11, y: 2, cost: 1200,   base: 44,    tone: 0x0EA5E9 },
+  { id: 'c3', name: 'Приём возвратов',x: 16, y: 2, cost: 26000,  base: 165,   tone: 0x22C55E },
+  { id: 'c4', name: 'Крупногабарит',  x: 6,  y: 8, cost: 620000, base: 640,   tone: 0xF59E0B },
+  { id: 'c5', name: 'Экспресс-выдача',x: 11, y: 8, cost: 1.9e7,  base: 2600,  tone: 0xEC4899 },
+  { id: 'c6', name: 'Premium-зона',   x: 16, y: 8, cost: 7.2e8,  base: 10500, tone: 0x14B8A6 },
 ];
 
 // Постаматы: выдают заказы сами, выручка копится в ячейках — её тоже нужно забирать
 export const ATMS = [
-  { id: 'a1', name: 'Постамат', x: 1.7, y: 5.4,  cost: 4200,   rate: 26,   tone: 0x8B5CF6 },
-  { id: 'a2', name: 'Постамат', x: 1.7, y: 7.8,  cost: 130000, rate: 520,  tone: 0x8B5CF6 },
-  { id: 'a3', name: 'Постамат', x: 1.7, y: 10.2, cost: 2.4e6,  rate: 7800, tone: 0x8B5CF6 },
-  { id: 'a4', name: 'Постамат', x: 1.7, y: 12.6, cost: 4.1e7,  rate: 1.1e5,tone: 0x8B5CF6 },
+  { id: 'a1', name: 'Постамат', x: 1.7, y: 5.4,  cost: 9500,   rate: 14,    tone: 0x8B5CF6 },
+  { id: 'a2', name: 'Постамат', x: 1.7, y: 7.8,  cost: 340000, rate: 240,   tone: 0x8B5CF6 },
+  { id: 'a3', name: 'Постамат', x: 1.7, y: 10.2, cost: 1.4e7,  rate: 3400,  tone: 0x8B5CF6 },
+  { id: 'a4', name: 'Постамат', x: 1.7, y: 12.6, cost: 6.5e8,  rate: 52000, tone: 0x8B5CF6 },
 ];
 
 // Зоны пункта: разовая постройка с постоянным эффектом на весь бизнес.
 // Ставятся на площадку в зале, уровни качаются в окне «Бизнес».
 export const ZONES = [
-  { id: 'z_coffee', name: 'Кофе-точка',  x: 20.6, y: 2.2,  cost: 26000,  ic: 'i-cup',
-    tone: 0xF59E0B, effect: 'spawn',   step: 0.10, grow: 1.6, max: 20,
+  { id: 'z_coffee', name: 'Кофе-точка',  x: 20.6, y: 2.2,  cost: 120000,  ic: 'i-cup',
+    tone: 0xF59E0B, effect: 'spawn',   step: 0.08, grow: 1.9, max: 20,
     desc: 'Клиенты приходят чаще' },
-  { id: 'z_fit',    name: 'Примерочные', x: 20.6, y: 5.6,  cost: 210000, ic: 'i-fit',
-    tone: 0xEC4899, effect: 'pay',     step: 0.12, grow: 1.65, max: 20,
+  { id: 'z_fit',    name: 'Примерочные', x: 20.6, y: 5.6,  cost: 4.2e6, ic: 'i-fit',
+    tone: 0xEC4899, effect: 'pay',     step: 0.09, grow: 1.95, max: 20,
     desc: 'Клиенты платят больше' },
-  { id: 'z_sort',   name: 'Сортировка',  x: 20.6, y: 9.0,  cost: 1.6e6,  ic: 'i-sort',
-    tone: 0x0EA5E9, effect: 'speed',   step: 0.12, grow: 1.7, max: 20,
+  { id: 'z_sort',   name: 'Сортировка',  x: 20.6, y: 9.0,  cost: 7.5e7,  ic: 'i-sort',
+    tone: 0x0EA5E9, effect: 'speed',   step: 0.09, grow: 2.0, max: 20,
     desc: 'Операторы работают быстрее' },
-  { id: 'z_load',   name: 'Погрузка',    x: 20.6, y: 12.4, cost: 1.2e7,  ic: 'i-truck',
-    tone: 0x22C55E, effect: 'offline',  step: 0.15, grow: 1.7, max: 20,
+  { id: 'z_load',   name: 'Погрузка',    x: 20.6, y: 12.4, cost: 9.5e8,  ic: 'i-truck',
+    tone: 0x22C55E, effect: 'offline',  step: 0.12, grow: 2.0, max: 20,
     desc: 'Больше дохода, пока вас нет' },
 ];
 
@@ -61,7 +61,7 @@ export const UPGRADES = {
 };
 
 // Уровень стойки: цена и прибавка
-export const COUNTER_UP = { costRatio: 0.55, grow: 1.16, payGrow: 1.14, speedGrow: 1.02 };
+export const COUNTER_UP = { costRatio: 0.8, grow: 1.23, payGrow: 1.125, speedGrow: 1.02 };
 
 // ─── Клиенты ─────────────────────────────────────────────────────────────────
 
@@ -82,12 +82,12 @@ export const STAFF = {
   clerk: {
     id: 'clerk', name: 'Оператор', desc: 'Сам выдаёт заказы на стойке',
     art: './assets/char/se_0.png',
-    cost: 3500, grow: 3.4, speedBase: 1, speedStep: 0.18, maxLvl: 20,
+    cost: 5200, grow: 4.3, speedBase: 1, speedStep: 0.15, maxLvl: 20,
   },
   runner: {
     id: 'runner', name: 'Администратор', desc: 'Сам относит выручку в кассу',
     art: './assets/char/nw_0.png',
-    cost: 12000, grow: 3.6, bagBase: 30, bagStep: 14, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
+    cost: 26000, grow: 4.1, bagBase: 30, bagStep: 14, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
   },
 };
 
@@ -118,11 +118,11 @@ export const BOOSTS = {
 // Награды приходят «посылками»: обычная, ценная и VIP
 export const SAFES = {
   free:   { id: 'free',   name: 'Посылка',     gold: 0,   cd: 3 * 3600, ic: 'i-box',  tone: '',
-            cashMin: 0.3, cashMax: 1.2, goldMin: 3,  goldMax: 12 },
+            cashMin: 0.25, cashMax: 0.8, goldMin: 3,  goldMax: 12 },
   silver: { id: 'silver', name: 'Ценная',      gold: 60,  cd: 0, ic: 'i-gift', tone: 'cyan',
-            cashMin: 1.5, cashMax: 4,   goldMin: 12, goldMax: 34 },
+            cashMin: 1,    cashMax: 2.5, goldMin: 12, goldMax: 34 },
   gold:   { id: 'gold',   name: 'VIP-посылка', gold: 240, cd: 0, ic: 'i-gift', tone: 'gold',
-            cashMin: 5,   cashMax: 13,  goldMin: 45, goldMax: 120 },
+            cashMin: 3,    cashMax: 7,   goldMin: 45, goldMax: 120 },
 };
 
 // ─── Задания ─────────────────────────────────────────────────────────────────
