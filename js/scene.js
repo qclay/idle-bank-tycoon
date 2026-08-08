@@ -455,7 +455,8 @@ function drawShaft(def, nVis) {
 }
 
 function drawVault(def, dt) {
-  const { x0, x1 } = shellX();
+  const { x1 } = shellX();
+  const x0 = LAYOUT.shaftW;            // шахта лифта идёт до самого низа, не перекрываем
   const top = sy(LAYOUT.vaultH);
   const bot = sy(LAYOUT.barsH);        // ниже — DOM-панели лифта и хранилища
   const g = ctx.createLinearGradient(0, top, 0, bot);
@@ -472,7 +473,9 @@ function drawVault(def, dt) {
   ctx.font = '700 11px system-ui';
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText('ХРАНИЛИЩЕ', LAYOUT.shaftW + 10, top + 18);
+  const label = 'ХРАНИЛИЩЕ';
+  ctx.fillText(label, x0 + 10, top + 18);
+  const labelEnd = x0 + 10 + ctx.measureText(label).width;
 
   // Дверь сейфа справа
   const dh = 76, dw = 76;
@@ -496,7 +499,7 @@ function drawVault(def, dt) {
 
   // Приёмка: куча денег, которые лифт привёз
   const ratio = vst.cap > 0 ? Math.min(1, v.load / vst.cap) : 0;
-  const px = LAYOUT.shaftW + 8;
+  const px = x0 + 8;
   const pw = dx - px - 12;
   const py = bot - 58;
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
@@ -521,7 +524,7 @@ function drawVault(def, dt) {
     ctx.save();
     ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.3;
     ctx.fillStyle = '#ffd54a';
-    ctx.beginPath(); ctx.arc(LAYOUT.shaftW + 84, top + 14, 5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(labelEnd + 10, top + 14, 5, 0, 7); ctx.fill();
     ctx.restore();
   }
 }
