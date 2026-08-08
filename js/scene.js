@@ -9,7 +9,7 @@ import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.
 
 import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
 import * as fx from './fx.js';
-import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR } from './balance.js';
+import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR, DISTRICT } from './balance.js';
 
 export const INK = 0x3f2b18;
 
@@ -303,6 +303,7 @@ function buildStreet() {
   let seed = 21;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
   for (let x = a3; x < W + 2; x += 3.2) {
+    if (x > FOE.x0 - 3.1 && x < FOE.x1) continue;      // здесь стоит конкурент
     const hh = 3.4 + rnd() * 3.6;
     const c = FAC[Math.floor(rnd() * FAC.length)];
     isoBox(g, x, a4, x + 2.8, a3, 0, hh, c, { sheen: false });
@@ -310,6 +311,7 @@ function buildStreet() {
       isoBox(g, x + 0.35, a3 - 0.05, x + 2.45, a3 - 0.01, 0.6 + f * 1.15, 0.62, 0xF2EEFA, { ow: 1.2 });
     }
   }
+  drawFoe(g, a3, a4);
   for (let y = a3; y < H + 2; y += 3.2) {
     const hh = 3.4 + rnd() * 3.6;
     const c = FAC[Math.floor(rnd() * FAC.length)];
@@ -568,6 +570,43 @@ export function drawCashPile(cont, x, y, z, ratio) {
   cont.zIndex = depth(x, y) + 1;
 }
 
+/** Пункт конкурента напротив: вывеска, витрина, вход и фургон. */
+export const FOE = { x0: 8.4, x1: 14.6, door: { x: 11.5, y: 0 } };
+
+function drawFoe(g, a3, a4) {
+  const x0 = FOE.x0, x1 = FOE.x1;
+  FOE.door.y = a3;
+  const brand = 0xE24A6A;
+  // корпус
+  isoBox(g, x0, a4, x1, a3, 0, 4.6, 0xEDE7F5, { sheen: false });
+  // цоколь и витрина
+  isoBox(g, x0, a3 - 0.06, x1, a3 - 0.02, 0.2, 1.9, 0xBFE4F5, { ow: 1.6 });
+  // вход
+  isoBox(g, x0 + 2.6, a3 - 0.08, x0 + 4.0, a3 - 0.02, 0.0, 1.9, brand, { ow: 1.6 });
+  // козырёк и вывеска
+  isoBox(g, x0 - 0.2, a3 - 0.5, x1 + 0.2, a3 - 0.02, 2.3, 0.22, brand);
+  isoBox(g, x0 + 0.4, a3 - 0.1, x1 - 0.4, a3 - 0.04, 2.7, 1.05, brand, { ow: 1.8 });
+  // «буквы» на вывеске
+  for (let i = 0; i < 7; i++) {
+    const bx = x0 + 0.9 + i * 0.62;
+    isoBox(g, bx, a3 - 0.12, bx + 0.34, a3 - 0.08, 3.0, 0.5, 0xFFFFFF);
+  }
+  // окна верхних этажей
+  for (let f = 0; f < 2; f++) {
+    for (let i = 0; i < 4; i++) {
+      const bx = x0 + 0.5 + i * 1.45;
+      isoBox(g, bx, a3 - 0.05, bx + 1.0, a3 - 0.01, 3.9 + f * 0, 0, 0xF2EEFA, { ow: 1 });
+    }
+  }
+  // фургон у входа
+  const vx = x1 + 0.4, vy = a3 + 0.7;
+  isoBox(g, vx, vy, vx + 2.2, vy + 0.9, 0.02, 0.5, 0xF1F1F6);
+  isoBox(g, vx + 0.1, vy + 0.1, vx + 1.3, vy + 0.8, 0.52, 0.75, 0xFBFBFF);
+  isoBox(g, vx + 1.4, vy + 0.12, vx + 2.1, vy + 0.78, 0.52, 0.5, brand);
+  isoCyl(g, vx + 0.5, vy + 0.9, 0.2, 0, 0.16, 0x2A2140);
+  isoCyl(g, vx + 1.8, vy + 0.9, 0.2, 0, 0.16, 0x2A2140);
+}
+
 // ── Уличное движение ─────────────────────────────────────────────────────────
 
 const traffic = [];
@@ -610,6 +649,14 @@ function buildTraffic() {
     }
   });
 
+  // клиенты конкурента: идут по дальнему тротуару и заходят к нему
+  for (let i = 0; i < 5; i++) {
+    traffic.push({
+      view: makeCharView(0xE9D5E8), kind: 'foe', t: i * 3.4, span: 18,
+      speed: 0.85 + (i % 3) * 0.2, ft: 0,
+    });
+  }
+
   // прохожие по ближнему тротуару
   for (let i = 0; i < 6; i++) {
     const vertical = i % 2 === 1;
@@ -635,6 +682,18 @@ export function tickTraffic(dt) {
       const pt = px(x, y, 0);
       t.view.x = pt.x; t.view.y = pt.y;
       t.view.zIndex = depth(x, y);
+    } else if (t.kind === 'foe') {
+      // идут вдоль дальнего тротуара к двери конкурента и «заходят»
+      const lane = -(STREET.walk + STREET.road + STREET.far * 0.55);
+      const goal = FOE.door.x;
+      const start = goal + 9;
+      const x = start - t.t;
+      t.ft += dt * 7;
+      setCharFrame(t.view, 'sw', Math.floor(t.ft) % 4);
+      const near = Math.max(0, Math.min(1, (x - goal) / 1.4));
+      t.view.alpha = near;
+      placeActor(t.view, Math.max(goal, x), lane);
+      if (x < goal - 0.5) t.t = -Math.random() * 4;
     } else {
       const p0 = t.dir > 0 ? t.t - 2 : t.span - t.t;
       if (t.vertical) { x = t.off; y = p0; } else { x = p0; y = t.off; }

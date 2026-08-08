@@ -3,7 +3,7 @@
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE,
+  DAILY_ALL, OFFLINE, DISTRICT,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
@@ -12,6 +12,7 @@ import {
   shownIncome, offlineUpCost, offlineCapSec, autoIncome, zoneUpCost, upgradeZone, zoneBonus,
 } from './game.js';
 import { toast, haptic, setNav, setBadge } from './ui.js';
+import * as district from './district.js';
 
 const root = () => document.getElementById('winRoot');
 let cur = null;
@@ -230,7 +231,8 @@ export function tasks() {
   setNav('tasks');
   open({
     title: 'Задания',
-    tabs: [{ label: 'На день', render: dailyView }, { label: 'Достижения', render: achvView }],
+    tabs: [{ label: 'На день', render: dailyView }, { label: 'Район', render: districtView },
+            { label: 'Награды', render: achvView }],
   });
 }
 
@@ -318,6 +320,72 @@ function achvView() {
     list.appendChild(row);
   }
   wrap.appendChild(list);
+  return wrap;
+}
+
+// ── РАЙОН: гонка с конкурентом через дорогу ──────────────────────────────────
+
+function districtView() {
+  const wrap = document.createElement('div');
+  district.ensure();
+  const d = S.district;
+  const p = district.pending();
+
+  if (p) {
+    const box = h(`<div class="card" style="padding:calc(18 * var(--du))">
+      <div class="card__art" style="height:calc(72 * var(--du))">
+        <span class="tile ${p.won ? 'tile--gold' : ''}" style="position:static;width:calc(68 * var(--du));height:calc(68 * var(--du));border-radius:calc(22 * var(--du))">
+          ${ic(p.won ? 'i-up' : 'i-box', 'ic')}</span></div>
+      <div class="card__v" style="font-size:calc(19 * var(--du))">${p.won ? 'Район ваш!' : 'Неделя проиграна'}</div>
+      <div class="card__sub">Вы ${fmt(p.my)} · ${esc(DISTRICT.name)} ${fmt(p.foe)}</div>
+      ${btn('btn--gold btn--card', 'Забрать', String(p.gold), 'i-gem')}
+    </div>`).firstElementChild;
+    box.querySelector('button').addEventListener('click', () => {
+      const r = district.claim();
+      if (r) { haptic('success'); toast(`+${r.gold}`); refresh(); }
+    });
+    wrap.appendChild(box);
+  }
+
+  const my = Math.floor(d.my), foe = Math.floor(d.foe);
+  const lead = district.lead();
+  const ahead = my >= foe;
+  wrap.appendChild(h(`<div class="sect">Неделя района · осталось ${dur(district.weekLeft())}</div>`).firstElementChild);
+  wrap.appendChild(h(`<div class="card" style="padding:calc(14 * var(--du))">
+    <div style="display:flex;align-items:center;justify-content:space-between;
+      font-size:calc(12 * var(--du));font-weight:900">
+      <span style="color:var(--v1)">Вы · ${fmt(my)}</span>
+      <span style="color:#E24A6A">${esc(DISTRICT.name)} · ${fmt(foe)}</span>
+    </div>
+    <div style="height:calc(14 * var(--du));border-radius:calc(7 * var(--du));overflow:hidden;
+      margin-top:calc(8 * var(--du));background:#E24A6A;display:flex">
+      <i style="width:${Math.round(lead * 100)}%;background:linear-gradient(90deg,#A78BFA,var(--v1))"></i>
+    </div>
+    <div class="card__sub" style="margin-top:calc(8 * var(--du))">
+      ${ahead ? 'Вы впереди — держите темп' : `Отстаёте на ${fmt(foe - my)} ${plural(foe - my, 'заказ', 'заказа', 'заказов')}`}
+    </div>
+  </div>`).firstElementChild);
+
+  const rows = [
+    ['i-run', 'Соперник', `${esc(DISTRICT.name)} · уровень ${d.foeLvl}`,
+     `берёт ${Math.round(district.foeFactor() * 100)}% от вашего темпа`],
+    ['i-up', 'Счёт', `Побед ${d.wins} · поражений ${d.losses}`,
+     d.streak > 1 ? `серия ${d.streak} подряд` : 'серия сбрасывается при поражении'],
+    ['i-gift', 'Награда', `${DISTRICT.winGold}+ кристаллов за победу`,
+     'за каждую победу подряд — больше'],
+  ];
+  const list = document.createElement('div');
+  list.className = 'list';
+  for (const [icon, name, a, b] of rows) {
+    list.appendChild(h(`<div class="row row--plain">
+      <span class="tile">${ic(icon, 'ic')}</span>
+      <div class="row__name">${name}</div>
+      <div class="row__sub">${a}</div>
+      <div class="row__sub" style="color:var(--ink3)">${b}</div>
+    </div>`).firstElementChild);
+  }
+  wrap.appendChild(list);
+  wrap.appendChild(h(`<div class="empty">Соперник работает и пока вас нет — но вполсилы</div>`).firstElementChild);
   return wrap;
 }
 
@@ -495,7 +563,7 @@ export function updateBadges() {
   const d = S.daily.tasks.filter((t) => dailyReady(t)).length
     + (S.daily.tasks.length && S.daily.tasks.every((t) => t.done) && !S.daily.allDone ? 1 : 0);
   const a = ACHIEVEMENTS.filter((x) => achvState(x).ready).length;
-  setBadge('tasks', d + a);
+  setBadge('tasks', d + a + (district.pending() ? 1 : 0));
   setBadge('safes', safeReady() ? 1 : 0);
   const st = COUNTERS.filter((c) => S.counters[c.id].open && S.cash >= counterUpCost(c)).length
     + (S.cash >= runnerCost() && S.runner === 0 ? 1 : 0);

@@ -7,6 +7,7 @@ import * as actors from './actors.js';
 import * as game from './game.js';
 import * as ui from './ui.js';
 import * as screens from './screens.js';
+import * as district from './district.js';
 import { initTG, loadCloud, isTG, pay } from './tg.js';
 import { fmt } from './core.js';
 import * as fx from './fx.js';
@@ -45,6 +46,7 @@ async function boot() {
   }
   bootState(raw);
   rollDaily();
+  district.ensure();
   if (!S.padPaid) S.padPaid = {};
 
   await scene.initScene(document.getElementById('stage'), prog);
@@ -57,6 +59,7 @@ async function boot() {
 
   // оффлайн
   const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
+  district.advanceOffline(away);
   if (raw && away > 60) {
     const p = game.computeOffline(away);
     if (p) setTimeout(() => screens.offline(p, () => {
@@ -73,7 +76,7 @@ async function boot() {
   window.__ready = true;          // сигнал для тестов: сцена собрана
   requestAnimationFrame(loop);
   setInterval(() => save(), SAVE_EVERY);
-  setInterval(() => screens.updateBadges(), 1000);
+  setInterval(() => { district.ensure(); screens.updateBadges(); }, 1000);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) save(true); else onReturn();
   });
@@ -83,6 +86,8 @@ async function boot() {
 function onReturn() {
   const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
   S.lastSeen = Date.now();
+  district.ensure();
+  district.advanceOffline(away);
   if (away < 120) return;
   const p = game.computeOffline(away);
   if (p) screens.offline(p, () => { S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`); });
@@ -172,6 +177,7 @@ function loop(now) {
   actors.movePlayer(ui.joy.dx, ui.joy.dy, dt);
   actors.tickCustomers(dt, (k) => {
     game.onServed(k);
+    district.addServed(1);
     const v = views.counters.get(k.counter);
     if (v && S.settings.fx) fx.pulse(v, 0.06);
   });
@@ -205,6 +211,7 @@ function loop(now) {
     if (v) scene.setPadFill(v, (S.padPaid?.[p.id] || 0) / p.cost,
                             game.padState.id === p.id && game.padState.short);
   }
+  district.tick(dt);
   scene.tickTraffic(dt);
   scene.pulsePads([...views.pads.values()], dt, game.padState.id);
   fx.tick(dt);
@@ -230,4 +237,4 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens };
+window.__game = { S, game, actors, scene, ui, screens, district };

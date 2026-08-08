@@ -36,6 +36,7 @@ export function defaultState() {
     daily: { date: '', tasks: [], allDone: false, counters: {} },
     achv: {},
 
+    district: null,            // гонка за район, заводится в district.js
     safe: { freeAt: 0 },
     boosts: {},
     freeBoost: {},

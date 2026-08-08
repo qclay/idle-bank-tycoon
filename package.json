@@ -19,6 +19,8 @@
     "pads": "node tools/pads.mjs",
     "perf": "node tools/perf.mjs",
     "action": "node tools/action.mjs",
-    "pay": "node tools/pay.mjs"
+    "pay": "node tools/pay.mjs",
+    "route": "node tools/route.mjs",
+    "district": "node tools/district.mjs"
   }
 }
