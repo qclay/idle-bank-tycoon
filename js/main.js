@@ -2,7 +2,7 @@
 
 import * as BAL from './balance.js';
 import { COUNTERS, ATMS, ZONES, SAVE_EVERY } from './balance.js';
-import { S, bootState, loadLocal, save, rollDaily, onChange } from './state.js';
+import { S, bootState, save, rollDaily, onChange, setSync } from './state.js';
 import * as scene from './scene.js';
 import * as actors from './actors.js';
 import * as game from './game.js';
@@ -10,7 +10,8 @@ import * as ui from './ui.js';
 import * as screens from './screens.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
-import { initTG, loadCloud, isTG, pay } from './tg.js';
+import { initTG, isTG, pay, initDataRaw } from './tg.js';
+import * as net from './net.js';
 import { fmt } from './core.js';
 import * as fx from './fx.js';
 
@@ -40,13 +41,21 @@ async function boot() {
 
   try { initTG(); } catch (e) { console.warn(e); }
 
-  const local = loadLocal();
-  let raw = local;
-  if (isTG()) {
-    const cloud = await loadCloud().catch(() => null);
-    if (cloud && (!local || (cloud.lastSeen || 0) > (local.lastSeen || 0) + 5000)) raw = cloud;
+  // Прогресс живёт на сервере. Вне Telegram подписи нет — играем в памяти
+  // вкладки и ничего никуда не сохраняем.
+  const authed = await net.connect(initDataRaw());
+  let raw = null, away = 0;
+  if (authed) {
+    const got = await net.load();
+    raw = got?.save || null;
+    away = got?.away || 0;          // сколько нас не было — по часам сервера
   }
   bootState(raw);
+  setSync((now) => net.markDirty(now));
+  net.bind(
+    () => ({ save: S, stats: { served: S.stats.served, earned: S.stats.earned, rep: S.rep || 0 } }),
+    (serverSave) => { if (serverSave) { bootState(serverSave); ui.toast('Прогресс подтянут с другого устройства'); } },
+  );
   rollDaily();
   district.ensure();
   reviews.ensure();
@@ -60,8 +69,7 @@ async function boot() {
   actors.syncStaff();
   onChange(onEvent);
 
-  // оффлайн
-  const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
+  // оффлайн: время отсутствия считает сервер, а не часы устройства
   district.advanceOffline(away);
   if (raw && away > 60) {
     const p = game.computeOffline(away);
@@ -69,8 +77,6 @@ async function boot() {
       S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`);
     }), 400);
   }
-  S.lastSeen = Date.now();
-
   prog(1);
   const b = document.getElementById('boot');
   b.classList.add('hide');
@@ -78,17 +84,21 @@ async function boot() {
 
   window.__ready = true;          // сигнал для тестов: сцена собрана
   requestAnimationFrame(loop);
-  setInterval(() => save(), SAVE_EVERY);
+  setInterval(() => net.flush(), SAVE_EVERY);
   setInterval(() => { district.ensure(); screens.updateBadges(); }, 1000);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) save(true); else onReturn();
+    if (document.hidden) net.flush(); else onReturn();
   });
-  window.addEventListener('pagehide', () => save(true));
+  window.addEventListener('pagehide', () => net.flushBeacon());
+  net.onNet(ui.showNet);
+  ui.showNet(net.net);
 }
 
-function onReturn() {
-  const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
-  S.lastSeen = Date.now();
+async function onReturn() {
+  // вернулись во вкладку: спрашиваем сервер, сколько нас не было
+  const got = await net.load();
+  const away = got?.away || 0;
+  if (got?.save && got.away > 5) bootState(got.save);
   district.ensure();
   reviews.ensure();
   district.advanceOffline(away);
@@ -253,5 +263,5 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens, district, reviews };
+window.__game = { S, game, actors, scene, ui, screens, district, reviews, net };
 window.__balance = BAL;   // для инструментов замера темпа

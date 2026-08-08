@@ -336,6 +336,13 @@ svg{width:100%;height:100%;display:block}
   text-shadow:0 calc(2 * var(--du)) calc(5 * var(--du)) rgba(0,0,0,.6)}
 .fxnum--cash{color:#86EFAC}
 
+.netbar{position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(112 * var(--du));z-index:70;pointer-events:none;
+  padding:calc(6 * var(--du)) calc(14 * var(--du));border-radius:calc(12 * var(--du));
+  background:rgba(220,38,38,.92);color:#fff;font-size:calc(11 * var(--du));font-weight:900;
+  box-shadow:0 calc(3 * var(--du)) calc(10 * var(--du)) rgba(0,0,0,.35)}
+.netbar.is-guest{background:rgba(120,113,140,.92)}
+
 /* ═══ Тосты ═════════════════════════════════════════════════════════════════ */
 
 #toasts{position:absolute;left:0;right:0;bottom:calc(94 * var(--du) + var(--sab));z-index:300;

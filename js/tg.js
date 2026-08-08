@@ -1,7 +1,6 @@
-// Telegram Mini App: полный экран, безопасные зоны, тема, профиль, облачный сейв.
+// Telegram Mini App: полный экран, безопасные зоны, тема, профиль игрока.
 
-import { S, setCloud } from './state.js';
-import { SAVE_KEY } from './balance.js';
+import { S } from './state.js';
 
 let tg = null;
 export function isTG() { return !!tg; }
@@ -47,7 +46,6 @@ export function initTG() {
   for (const ev of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged']) {
     tryCall(() => tg.onEvent(ev, sync));
   }
-  setCloud(cloudApi());
   return true;
 }
 
@@ -62,49 +60,17 @@ function applyVh(h) {
   document.documentElement.style.setProperty('--vh', `${v}px`);
 }
 
-// ── Облачный сейв (по 3800 байт на ключ) ─────────────────────────────────────
+// Облачного сейва здесь нет намеренно: состояние игрока живёт на сервере,
+// а не на устройстве.
 
-const CHUNK = 3800;
+/** Подпись Telegram — ею сервер удостоверяет игрока. */
+export function initDataRaw() { return tg?.initData || ''; }
 
-function cloudApi() {
-  if (!tg?.CloudStorage) return null;
-  let pending = null, busy = false;
-  const flush = () => {
-    const json = pending; pending = null; busy = false;
-    if (!json) return;
-    const parts = [];
-    for (let i = 0; i < json.length; i += CHUNK) parts.push(json.slice(i, i + CHUNK));
-    if (parts.length > 8) return;
-    tryCall(() => tg.CloudStorage.setItem(`${SAVE_KEY}_n`, String(parts.length), () => {}));
-    parts.forEach((p, i) => tryCall(() => tg.CloudStorage.setItem(`${SAVE_KEY}_${i}`, p, () => {})));
-  };
-  return {
-    write(json) {
-      pending = json;
-      if (busy) return;
-      busy = true;
-      setTimeout(flush, 2500);
-    },
-  };
-}
-
-export function loadCloud() {
-  return new Promise((resolve) => {
-    let done = false;
-    const fin = (v) => { if (!done) { done = true; resolve(v); } };
-    setTimeout(() => fin(null), 2500);
-    if (!tg?.CloudStorage) return fin(null);
-    tryCall(() => tg.CloudStorage.getItem(`${SAVE_KEY}_n`, (err, n) => {
-      const count = Number(n);
-      if (err || !count) return fin(null);
-      const keys = Array.from({ length: count }, (_, i) => `${SAVE_KEY}_${i}`);
-      tryCall(() => tg.CloudStorage.getItems(keys, (e2, map) => {
-        if (e2 || !map) return fin(null);
-        try { const j = keys.map((k) => map[k] || '').join(''); fin(j ? JSON.parse(j) : null); }
-        catch { fin(null); }
-      })) ?? fin(null);
-    })) ?? fin(null);
-  });
+export function tgHaptic(kind) {
+  try {
+    if (['success', 'error', 'warning'].includes(kind)) tg?.HapticFeedback?.notificationOccurred(kind);
+    else tg?.HapticFeedback?.impactOccurred(kind || 'light');
+  } catch { /* вне телеграма */ }
 }
 
 /** Оплата звёздами: ссылку на счёт может выдать только бот.

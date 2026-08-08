@@ -188,13 +188,32 @@ for (const tab of ['tasks', 'staff', 'safes', 'shop']) {
 const closed = await p.$('.win.is-open');
 ok('окно закрывается', !closed);
 
-// 11. Сейв
-await p.evaluate(() => { const s = window.__game; s.S.gold = 777; localStorage.setItem('idlebank2', JSON.stringify(s.S)); });
+// 11. На устройстве не должно оставаться ничего
+const stored = await p.evaluate(() => {
+  const ls = [], ss = [];
+  for (let i = 0; i < localStorage.length; i++) ls.push(localStorage.key(i));
+  for (let i = 0; i < sessionStorage.length; i++) ss.push(sessionStorage.key(i));
+  return { ls, ss };
+});
+// __telegram__initParams пишет сам SDK Telegram, игрового состояния там нет
+const mine = (k) => !k.startsWith('__telegram__');
+ok('localStorage пуст', stored.ls.length === 0, stored.ls.join(', ') || 'ключей нет');
+ok('в sessionStorage нет нашего состояния', !stored.ss.filter(mine).length,
+   stored.ss.join(', ') || 'ключей нет');
+
+// прогресс идёт в памяти и после перезагрузки начинается заново
+await p.evaluate(() => { window.__game.S.gold = 777; });
 await p.reload();
 await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
-await p.waitForTimeout(1200);
-const loaded = await p.evaluate(() => ({ gold: window.__game.S.gold, c1: window.__game.S.counters.c1.open }));
-ok('сейв читается после перезагрузки', loaded.gold === 777, `gold=${loaded.gold}`);
+await p.waitForTimeout(1000);
+const reboot = await p.evaluate(() => ({
+  gold: window.__game.S.gold,
+  guest: window.__game.net.net.guest,
+  banner: document.querySelector('.netbar')?.textContent || '',
+}));
+ok('вне Telegram играем гостем', reboot.guest === true);
+ok('прогресс не пережил перезагрузку', reboot.gold !== 777, `золото ${reboot.gold}`);
+ok('игроку видно, что это демо-режим', /демо/i.test(reboot.banner), reboot.banner);
 
 console.log('');
 let failed = 0;

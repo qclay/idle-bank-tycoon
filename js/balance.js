@@ -242,5 +242,4 @@ export const DISTRICT = {
   loseGold: 15,
 };
 
-export const SAVE_KEY = 'idlebank2';
 export const SAVE_EVERY = 5000;

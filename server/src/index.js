@@ -66,7 +66,8 @@ export default {
       const u = await who(req, env);
       if (!u) return json({ error: 'подпись не сошлась' }, 401);
       const row = await env.DB.prepare('SELECT data, rev, updated FROM saves WHERE id=?').bind(u.id).first();
-      return json({ save: row ? JSON.parse(row.data) : null, rev: row?.rev || 0, updated: row?.updated || 0 });
+      return json({ save: row ? JSON.parse(row.data) : null, rev: row?.rev || 0,
+                     updated: row?.updated || 0, now: Date.now() });
     }
 
     if (path === '/state' && req.method === 'POST') {

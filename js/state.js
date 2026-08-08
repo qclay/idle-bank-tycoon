@@ -1,6 +1,6 @@
 // Состояние игры и сохранение.
 
-import { COUNTERS, ATMS, ZONES, UPGRADES, SAVE_KEY, DAILY_POOL, DAILY_COUNT } from './balance.js';
+import { COUNTERS, ATMS, ZONES, UPGRADES, DAILY_POOL, DAILY_COUNT } from './balance.js';
 
 export const S = {};
 const subs = new Set();
@@ -72,26 +72,15 @@ function merge(base, over) {
   return over === undefined ? base : over;
 }
 
-let timer = 0;
-let cloud = null;
-export function setCloud(api) { cloud = api; }
+// Состояние живёт только в памяти вкладки и на сервере: ничего не пишем
+// на устройство — ни localStorage, ни CloudStorage.
+let push = null;
+export function setSync(fn) { push = fn; }
 
+/** Пометить, что состояние изменилось. now — отправить немедленно. */
 export function save(now = false) {
   S.lastSeen = Date.now();
-  if (now) return write();
-  if (timer) return;
-  timer = setTimeout(() => { timer = 0; write(); }, 400);
-}
-
-function write() {
-  let json;
-  try { json = JSON.stringify(S); } catch { return; }
-  try { localStorage.setItem(SAVE_KEY, json); } catch { /* приватный режим */ }
-  if (cloud) cloud.write(json);
-}
-
-export function loadLocal() {
-  try { const r = localStorage.getItem(SAVE_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+  push?.(now);
 }
 
 export function todayKey(d = new Date()) { return d.toISOString().slice(0, 10); }

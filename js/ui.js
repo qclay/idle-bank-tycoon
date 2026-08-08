@@ -257,6 +257,22 @@ export function haptic(kind = 'light') {
   } catch { /* вне телеграма */ }
 }
 
+/** Состояние связи с сервером: игрок должен видеть, что прогресс не уходит. */
+let netEl = null;
+export function showNet(n) {
+  if (!netEl) {
+    netEl = document.createElement('div');
+    netEl.className = 'netbar';
+    document.getElementById('app').appendChild(netEl);
+  }
+  const bad = n.guest || !n.online;
+  netEl.hidden = !bad;
+  netEl.className = 'netbar' + (n.guest ? ' is-guest' : '');
+  netEl.textContent = n.guest
+    ? 'Демо-режим: прогресс не сохраняется'
+    : (n.lastError || 'Нет связи с сервером');
+}
+
 export function setBadge(tab, n) {
   const b = $(`.nav-btn[data-tab="${tab}"] .badge`);
   if (!b) return;
