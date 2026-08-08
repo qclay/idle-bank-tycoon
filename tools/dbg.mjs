@@ -1,12 +1,12 @@
 import { chromium } from 'playwright';
+const URL = process.env.SHOT_URL || 'http://localhost:8199/index.html';
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2 });
-p.on('console', m => console.log('[console]', m.type(), m.text()));
 p.on('pageerror', e => console.log('[pageerror]', e.message));
-p.on('requestfailed', r => console.log('[404]', r.url()));
-await p.goto('http://localhost:8199/index.html');
-await p.waitForTimeout(5000);
+p.on('requestfailed', r => console.log('[failed]', r.url()));
+p.on('response', r => { if (r.status() >= 400) console.log('[' + r.status() + ']', r.url()); });
+await p.goto(URL);
+await p.waitForTimeout(6000);
 console.log('__game:', await p.evaluate(() => typeof window.__game));
-console.log('boot виден:', await p.evaluate(() => !!document.getElementById('boot')));
-await p.screenshot({ path: '/private/tmp/claude-501/-Users-falins-projects-idle/40be8d34-0637-4942-bd3c-ecee4e2147b2/scratchpad/v2/dbg.png' });
+await p.screenshot({ path: (process.env.SHOT_DIR || '/private/tmp/shots') + '/dbg.png' });
 await b.close();
