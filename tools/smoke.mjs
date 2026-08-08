@@ -7,7 +7,11 @@ const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
 const errs = [];
 p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
-p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+// Браузер сам просит /favicon.ico; на Pages его нет — это не ошибка игры.
+p.on('console', (m) => { if (m.type() === 'error' && !/favicon/i.test(m.text())) errs.push(m.text()); });
+p.on('response', (r) => {
+  if (r.status() >= 400 && !/favicon/i.test(r.url())) errs.push(`${r.status()} ${r.url()}`);
+});
 
 const checks = [];
 const ok = (name, cond, extra = '') => checks.push({ name, pass: !!cond, extra });
