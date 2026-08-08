@@ -157,6 +157,23 @@ const after = await p.evaluate(() => ({ x: window.__game.actors.player.x, y: win
 ok('джойстик по экрану ведёт героя', Math.hypot(after.x - drag.x, after.y - drag.y) > 0.4,
    `сдвиг ${Math.hypot(after.x - drag.x, after.y - drag.y).toFixed(2)}`);
 
+// 9б. Разворот героя по направлению движения
+const face = await p.evaluate(() => {
+  const { actors } = window.__game;
+  const read = () => actors.player.view.__body.scale.x;
+  actors.player.x = 9; actors.player.y = 9; actors.player.vx = 0; actors.player.vy = 0;
+  // вправо по экрану = +x, -y в мире
+  for (let i = 0; i < 25; i++) actors.movePlayer(0.7, -0.7, 0.05);
+  const right = read();
+  actors.player.vx = 0; actors.player.vy = 0;
+  for (let i = 0; i < 25; i++) actors.movePlayer(-0.7, 0.7, 0.05);
+  const left = read();
+  return { right, left };
+});
+// скелет нарисован смотрящим влево: взгляд вправо = отрицательный масштаб
+ok('идём вправо — герой смотрит вправо', face.right < 0, `scaleX ${face.right.toFixed(3)}`);
+ok('идём влево — герой смотрит влево', face.left > 0, `scaleX ${face.left.toFixed(3)}`);
+
 // 10. Окна
 for (const tab of ['tasks', 'staff', 'safes', 'shop']) {
   await p.click(`.nav-btn[data-tab="${tab}"]`);

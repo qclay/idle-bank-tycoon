@@ -515,11 +515,14 @@ export function setPlayerAnim(view, name) {
   }
 }
 
+/** Скелет утки нарисован смотрящим ВЛЕВО, поэтому положительный масштаб —
+ *  это взгляд влево. Чтобы повернуть героя вправо, масштаб инвертируем. */
 export function setPlayerFlip(view, faceRight) {
   const b = view.__body;
   if (!b) return;
   const k = Math.abs(b.scale.x);
-  b.scale.x = faceRight ? k : -k;
+  b.scale.x = faceRight ? -k : k;
+  view.__faceRight = faceRight;
 }
 
 /** Лёгкое покачивание на ходу — без него герой «плывёт» по полу. */

@@ -18,6 +18,7 @@
     "smoke": "node tools/smoke.mjs",
     "pads": "node tools/pads.mjs",
     "perf": "node tools/perf.mjs",
-    "action": "node tools/action.mjs"
+    "action": "node tools/action.mjs",
+    "pay": "node tools/pay.mjs"
   }
 }

@@ -21,6 +21,7 @@ export function initUI() {
   els = {
     cash: $('#cash'), gold: $('#gold'), lvlN: $('#lvlN'), lvlFill: $('#lvlFill'),
     carry: $('#carry'), carryFill: $('#carryFill'), carryTxt: $('#carryTxt'),
+    xpNum: $('#xpNum'), cashChip: $('.chip--cash'),
     joy: $('#joy'), base: $('#joyBase'), knob: $('#joyKnob'),
     worldUI: $('#worldUI'), toasts: $('#toasts'), nav: $('#nav'), hud: $('#hud'),
   };
@@ -33,7 +34,11 @@ export function initUI() {
 }
 
 export function setNav(tab) {
-  $$('.nav-btn').forEach((b) => b.classList.toggle('is-on', b.dataset.tab === tab));
+  $$('.nav-btn').forEach((b) => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('is-on', on);
+    if (on) $('#navHl').style.setProperty('--hlcx', b.style.getPropertyValue('--cx'));
+  });
 }
 
 // ── Джойстик ─────────────────────────────────────────────────────────────────
@@ -93,10 +98,19 @@ export function tickHud(dt) {
   hudAcc += dt;
   if (hudAcc < 0.08) return;
   hudAcc = 0;
-  els.cash.textContent = fmt(S.cash);
+  const cashTxt = fmt(S.cash);
+  if (els.cash.textContent !== cashTxt) {
+    els.cash.textContent = cashTxt;
+    // счётчик подпрыгивает на приход денег — иначе прибавка незаметна
+    els.cashChip.classList.remove('bump');
+    void els.cashChip.offsetWidth;
+    els.cashChip.classList.add('bump');
+  }
   els.gold.textContent = fmt(S.gold);
   els.lvlN.textContent = S.level;
-  els.lvlFill.style.width = `${clamp((S.xp / xpForLevel(S.level)) * 100, 0, 100)}%`;
+  const need = xpForLevel(S.level);
+  els.lvlFill.style.width = `${clamp((S.xp / need) * 100, 0, 100)}%`;
+  els.xpNum.textContent = `${fmt(S.xp)} / ${fmt(need)}`;
 
   const cap = bagCap();
   const has = S.carry > 0.01;
@@ -210,5 +224,5 @@ export function setBadge(tab, n) {
 export function hudInsets() {
   const d = du();
   return { top: 56 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0),
-           bottom: 76 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
+           bottom: 92 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
 }

@@ -30,6 +30,7 @@ npm run serve     # http://localhost:8199
 ```bash
 npm run smoke     # 23 сквозные проверки игрового цикла
 npm run pads      # площадки: подход с 8 сторон к каждой
+npm run pay       # оплата площадки со счёта и из рук
 npm run perf      # рендерер, FPS и время нашего кода в кадре
 npm run shot      # скриншоты экранов
 npm run action    # кадры в движении: сбор, сдача, покупка

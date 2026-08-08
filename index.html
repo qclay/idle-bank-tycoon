@@ -17,40 +17,62 @@
 
   <header id="hud">
     <div class="hud-row">
-      <div class="pill pill--cash">
-        <img class="pill__frame" src="./assets/pen/pill.png" alt="">
-        <img class="pill__ico" src="./assets/ui/hud_coin.png" alt="">
-        <div class="pill__n" id="cash">0</div>
+      <div class="chip chip--cash">
+        <i class="chip__pill"><i></i></i>
+        <img class="chip__ico" src="./assets/ui/hud_coin.png" alt="">
+        <b class="chip__val" id="cash">0</b>
       </div>
-      <div class="lvl">
-        <div class="lvl__bar"><div class="lvl__fill" id="lvlFill"></div></div>
-        <img class="lvl__star" src="./assets/ui/lvlstar.png" alt="">
-        <div class="lvl__n" id="lvlN">1</div>
-      </div>
-      <button class="pill pill--gold" id="goldPill">
-        <img class="pill__frame" src="./assets/pen/pill.png" alt="">
-        <img class="pill__ico" src="./assets/ui/hud_star.png" alt="">
-        <div class="pill__n" id="gold">0</div>
+      <button class="chip chip--gold" id="goldPill">
+        <i class="chip__pill"><i></i></i>
+        <img class="chip__ico" src="./assets/ui/hud_star.png" alt="">
+        <b class="chip__val" id="gold">0</b>
       </button>
+
+      <div class="xpbar">
+        <img class="xpbar__star" src="./assets/ui/lvlstar.png" alt="">
+        <b class="xpbar__n" id="lvlN">1</b>
+        <i class="gbar"><i class="gbar__in"><i class="gbar__groove"><i class="gbar__fill" id="lvlFill"></i></i></i></i>
+        <span class="xpbar__num" id="xpNum">0 / 0</span>
+      </div>
     </div>
   </header>
 
   <div id="carry" hidden>
-    <img src="./assets/ui/coin.png" alt="">
-    <div class="cbar"><i id="carryFill"></i></div>
-    <div class="ctxt" id="carryTxt">0</div>
+    <img class="carry__ico" src="./assets/ui/coin.png" alt="">
+    <i class="gbar gbar--gold"><i class="gbar__in"><i class="gbar__groove"><i class="gbar__fill" id="carryFill"></i></i></i></i>
+    <b class="carry__n" id="carryTxt">0</b>
   </div>
 
   <div id="joy"><div id="joyBase"></div><div id="joyKnob"></div></div>
 
   <nav id="nav">
-    <div class="nav-in">
-      <button class="nav-btn is-on" data-tab="bank"><img src="./assets/ui/tab_game.png" alt=""><span>Банк</span></button>
-      <button class="nav-btn" data-tab="tasks"><img src="./assets/ui/tab_tasks.png" alt=""><span>Задания</span><i class="badge" hidden></i></button>
-      <button class="nav-btn" data-tab="staff"><img src="./assets/ui/tab_friends.png" alt=""><span>Персонал</span><i class="badge" hidden></i></button>
-      <button class="nav-btn" data-tab="safes"><img src="./assets/ui/tab_presents.png" alt=""><span>Сейфы</span><i class="badge" hidden></i></button>
-      <button class="nav-btn" data-tab="shop"><img src="./assets/ui/tab_shop.png" alt=""><span>Магазин</span></button>
-    </div>
+    <svg class="nav__frame" viewBox="-1.22 -1.22 360.44 75.44" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="nbF1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#89683E"/><stop offset="1" stop-color="#AC7B3C"/></linearGradient>
+        <linearGradient id="nbF2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#EBC57E"/><stop offset=".5" stop-color="#D57C01" stop-opacity=".5"/>
+          <stop offset="1" stop-color="#D6A559"/></linearGradient>
+        <linearGradient id="nbF3" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#F5E3B5"/><stop offset="1" stop-color="#EDCC87"/></linearGradient>
+        <linearGradient id="nbS3" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#F9EAC4"/><stop offset=".48" stop-color="#DEA842" stop-opacity="0"/>
+          <stop offset="1" stop-color="#D2AA6B"/></linearGradient>
+        <linearGradient id="nbS5" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#E8C37B"/><stop offset="1" stop-color="#D8A95D"/></linearGradient>
+      </defs>
+      <rect x="0" y="0" width="358" height="73" rx="13.42" fill="url(#nbF1)"/>
+      <rect x="1" y="1" width="356" height="71" rx="13.42" fill="url(#nbF2)"/>
+      <rect x="4" y="4" width="350" height="65" rx="10.98" fill="url(#nbF3)"/>
+      <rect x="4.61" y="4.61" width="348.78" height="63.78" rx="10.37" fill="none" stroke="url(#nbS3)" stroke-width="1.22"/>
+      <rect x="3.39" y="3.39" width="351.22" height="66.22" rx="11.59" fill="none" stroke="url(#nbS5)" stroke-width="1.22"/>
+    </svg>
+    <i class="nav-hl" id="navHl"></i>
+    <button class="nav-btn is-on" data-tab="bank"  style="--cx:37"><img src="./assets/ui/tab_game.png" alt=""><b>Банк</b></button>
+    <button class="nav-btn" data-tab="tasks"       style="--cx:104"><img src="./assets/ui/tab_tasks.png" alt=""><b>Задания</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="staff"       style="--cx:171"><img src="./assets/ui/tab_friends.png" alt=""><b>Персонал</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="safes"       style="--cx:238"><img src="./assets/ui/tab_presents.png" alt=""><b>Сейфы</b><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="shop"        style="--cx:305"><img src="./assets/ui/tab_shop.png" alt=""><b>Магазин</b></button>
   </nav>
 
   <div id="winRoot"></div>

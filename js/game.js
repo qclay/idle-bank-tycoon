@@ -223,6 +223,26 @@ export const padState = { id: null, short: false };
 
 let coinTick = 0;
 
+/** Сколько денег доступно на покупку: счёт плюс то, что игрок несёт в руках.
+ *  Раньше площадка списывала только со счёта — игрок стоял с полной сумкой,
+ *  и по его ощущению площадка просто не работала. */
+export function spendable() { return S.cash + S.carry; }
+
+function payFrom(amount) {
+  let left = amount;
+  const fromCash = Math.min(S.cash, left);
+  S.cash -= fromCash; left -= fromCash;
+  if (left > 1e-9 && S.carry > 0) {
+    const fromBag = Math.min(S.carry, left);
+    S.carry -= fromBag; left -= fromBag;
+    // деньги из рук тоже засчитываем как выручку, иначе ломается статистика
+    S.stats.earned += fromBag;
+    S.stats.deposits += 1 / 60;
+    bumpDaily('deposits', 1 / 60);
+  }
+  return amount - left;
+}
+
 function tickPads(dt, ui) {
   const list = pads();
   padState.id = null; padState.short = false;
@@ -234,11 +254,12 @@ function tickPads(dt, ui) {
     const paid = S.padPaid[p.id] || 0;
     if (paid >= p.cost) continue;
     padState.id = p.id;
-    if (S.cash < 1) { padState.short = true; continue; }
+    const have = spendable();
+    if (have < 1) { padState.short = true; continue; }
     const rate = Math.max(p.cost / 2.2, 14);
-    const pay = Math.min(rate * dt, p.cost - paid, S.cash);
+    const want = Math.min(rate * dt, p.cost - paid, have);
+    const pay = payFrom(want);
     if (pay <= 0) { padState.short = true; continue; }
-    S.cash -= pay;
     S.padPaid[p.id] = paid + pay;
     // монеты сыплются из рук в площадку
     coinTick += dt;
