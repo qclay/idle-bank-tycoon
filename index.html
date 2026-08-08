@@ -25,6 +25,25 @@
     <path d="m7.6 9.4 2 2 4.2-4.2" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M7.6 15.6h8.8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
   </symbol>
+  <symbol id="i-star" viewBox="0 0 24 24">
+    <path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.6 6.7 19.4l1.1-5.9L3.5 9.4l5.9-.8L12 3.2Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="6.4" fill="none" stroke="currentColor" stroke-width="2.2"/>
+    <path d="M15.8 15.8 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24">
+    <path d="M12 3.4 21.4 20H2.6L12 3.4Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M12 9.5v4.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="12" cy="16.8" r="1.2" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24">
+    <path d="M12 20s-7.4-4.4-7.4-9.3A4.3 4.3 0 0 1 12 8.2a4.3 4.3 0 0 1 7.4 2.5C19.4 15.6 12 20 12 20Z" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-exit" viewBox="0 0 24 24">
+    <path d="M14 4.5H6.4A1.4 1.4 0 0 0 5 5.9v12.2a1.4 1.4 0 0 0 1.4 1.4H14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M12.6 12H20m0 0-3.2-3.2M20 12l-3.2 3.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
   <symbol id="i-gear" viewBox="0 0 24 24">
     <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="2"/>
     <path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.7 7.7 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5c-.6.25-1.2.6-1.7 1l-2.3-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1c.5.4 1.1.75 1.7 1l.4 2.5h4l.4-2.5c.6-.25 1.2-.6 1.7-1l2.3 1 2-3.4-2-1.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -153,6 +172,11 @@
         <span class="cap__ic"><svg><use href="#i-gear"/></svg></span>
       </button>
     </div>
+    <button class="rep" id="repPill">
+      <span class="rep__ic"><svg><use href="#i-star"/></svg></span>
+      <b class="rep__v" id="repV">4.2</b>
+      <i class="badge" id="repBadge" hidden></i>
+    </button>
     <div class="lvl">
       <span class="lvl__n" id="lvlN">1</span>
       <span class="lvl__track"><i class="lvl__fill" id="lvlFill"></i></span>

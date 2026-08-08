@@ -786,11 +786,13 @@ export function makeRemoteView() {
 /** Значок настроения над клиентом: недовольство видно издалека. */
 export function setMood(view, kind) {
   if (!view) return;
+  if (view.__moodK === kind) return;         // тот же значок — не пересобираем
+  view.__moodK = kind;
   if (view.__mood) { view.removeChild(view.__mood); view.__mood.destroy(); view.__mood = null; }
   if (!kind) return;
   const g = new Graphics();
   const y = -74, r = 13;
-  const bg = kind === 'bad' ? 0xE24A6A : 0x22C55E;
+  const bg = kind === 'bad' ? 0xE24A6A : kind === 'meh' ? 0xF59E0B : 0x22C55E;
   g.roundRect(-r - 3, y - r - 3, (r + 3) * 2, (r + 3) * 2, 9).fill({ color: 0xFFFFFF, alpha: 0.95 });
   g.roundRect(-r - 3, y - r - 3, (r + 3) * 2, (r + 3) * 2, 9).stroke({ width: 2.4, color: bg });
   g.poly([-4, y + r + 3, 4, y + r + 3, 0, y + r + 10]).fill(0xFFFFFF);
@@ -798,6 +800,9 @@ export function setMood(view, kind) {
   g.circle(5, y - 4, 2.2).fill(bg);
   if (kind === 'bad') {
     g.moveTo(-6, y + 7); g.arc(0, y + 12, 7, Math.PI * 1.15, Math.PI * 1.85);
+    g.stroke({ width: 2.6, color: bg, cap: 'round' });
+  } else if (kind === 'meh') {
+    g.moveTo(-6, y + 7); g.lineTo(6, y + 7);
     g.stroke({ width: 2.6, color: bg, cap: 'round' });
   } else {
     g.moveTo(-6, y + 3); g.arc(0, y - 2, 7, Math.PI * 0.15, Math.PI * 0.85);

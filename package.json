@@ -27,6 +27,7 @@
     "mood": "node tools/mood.mjs",
     "api": "node tools/api.mjs",
     "coop": "node tools/coop.mjs",
+    "social": "node tools/social.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

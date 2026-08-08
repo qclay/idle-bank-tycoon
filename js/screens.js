@@ -667,6 +667,114 @@ function shopView() {
   return wrap;
 }
 
+// ── СОЦСЕТЬ ──────────────────────────────────────────────────────────────────
+// Всё, что о пункте думает город: рейтинг, лента отзывов и настроение смены.
+// Сюда же стекаются тексты, написанные моделью по реальным событиям в зале.
+
+export function social(sub) {
+  const m = open({
+    title: 'Соцсеть',
+    tabs: [{ label: 'Отзывы', render: feedView }, { label: 'Смена', render: shiftView }],
+  });
+  if (sub === 'shift') m.el.querySelectorAll('.win__tab')[1]?.click();
+  S.seenReviews = (S.reviews || []).length;
+  save();
+  return m;
+}
+
+function starRow(n, size = 13) {
+  let out = '';
+  for (let i = 1; i <= 5; i++) {
+    const on = n >= i - 0.25;
+    out += `<span class="st${on ? ' is-on' : ''}" style="width:calc(${size} * var(--du));height:calc(${size} * var(--du))"><svg><use href="#i-star"/></svg></span>`;
+  }
+  return out;
+}
+
+function ago(t) {
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'только что';
+  if (s < 3600) return `${Math.floor(s / 60)} мин назад`;
+  if (s < 86400) return `${Math.floor(s / 3600)} ч назад`;
+  return `${Math.floor(s / 86400)} дн назад`;
+}
+
+function feedView() {
+  const wrap = document.createElement('div');
+  const r = reviews.stars();
+  const spawn = Math.round((reviews.spawnMult() - 1) * 100);
+  const pay = Math.round((reviews.payMult() - 1) * 100);
+  const sign = (v) => `${v >= 0 ? '+' : ''}${v}%`;
+  wrap.appendChild(h(`<div class="repcard">
+    <div class="repcard__n">${r.toFixed(1)}</div>
+    <div class="repcard__r">
+      <div class="repcard__stars">${starRow(r, 16)}</div>
+      <div class="repcard__s">Поток клиентов ${sign(spawn)} · средний чек ${sign(pay)}</div>
+    </div>
+  </div>`).firstElementChild);
+
+  const list = reviews.feed();
+  if (!list.length) {
+    wrap.appendChild(h('<div class="empty">Отзывов пока нет. Обслужите первых клиентов — город заговорит.</div>').firstElementChild);
+    return wrap;
+  }
+  wrap.appendChild(h('<div class="sect">Что пишут</div>').firstElementChild);
+  for (const v of list) {
+    wrap.appendChild(h(`<div class="post post--${v.kind}">
+      <div class="post__ava">${esc(v.who.slice(0, 1))}</div>
+      <div class="post__b">
+        <div class="post__h"><b>${esc(v.who)}</b><span class="post__t">${ago(v.t)}</span></div>
+        <div class="post__stars">${starRow(v.stars, 11)}</div>
+        <div class="post__x">${esc(v.text)}</div>
+        ${v.at ? `<div class="post__at">${esc(v.at)}</div>` : ''}
+      </div>
+    </div>`).firstElementChild);
+  }
+  return wrap;
+}
+
+function shiftView() {
+  const wrap = document.createElement('div');
+  wrap.appendChild(h('<div class="sect">Настроение операторов</div>').firstElementChild);
+  const open_ = COUNTERS.filter((c) => S.counters[c.id].open);
+  if (!open_.length) {
+    wrap.appendChild(h('<div class="empty">Откройте первую витрину — появится и смена.</div>').firstElementChild);
+  }
+  for (const c of open_) {
+    const st = S.counters[c.id];
+    const m = reviews.morale(c.id);
+    const k = Math.max(0, Math.min(1, (m - 0.45) / 0.8));
+    const mood = m >= 1.05 ? 'В ударе' : m >= 0.9 ? 'В норме' : m >= 0.7 ? 'Подавлен' : 'На грани';
+    const tone = m >= 1.05 ? 'ok' : m >= 0.9 ? '' : m >= 0.7 ? 'warn' : 'bad';
+    wrap.appendChild(h(`<div class="mrow mrow--${tone || 'norm'}">
+      <div class="mrow__t"><b>${esc(c.name)}</b><i>${st.clerk ? `${st.clerk} ${plural(st.clerk, 'оператор', 'оператора', 'операторов')}` : 'без оператора'}</i></div>
+      <div class="mrow__r">
+        <div class="mrow__bar"><i style="width:${Math.round(k * 100)}%"></i></div>
+        <span class="mrow__m">${mood}</span>
+      </div>
+    </div>`).firstElementChild);
+  }
+
+  wrap.appendChild(h('<div class="sect">Как вы решали споры</div>').firstElementChild);
+  const st = S.stats || {};
+  const cells = [
+    ['Разобрались', st.checks || 0, 'i-search'],
+    ['Штрафов', st.fines || 0, 'i-warn'],
+    ['Извинений', st.apologies || 0, 'i-heart'],
+    ['Ушли не дождавшись', st.walkouts || 0, 'i-exit'],
+  ];
+  const grid = h('<div class="grid2"></div>').firstElementChild;
+  for (const [name, val, icon] of cells) {
+    grid.appendChild(h(`<div class="stat">
+      <span class="tile">${ic(icon, 'ic')}</span>
+      <b>${fmt(val)}</b><i>${name}</i>
+    </div>`).firstElementChild);
+  }
+  wrap.appendChild(grid);
+  wrap.appendChild(h('<div class="empty">Долгая очередь портит настроение клиентов прямо в зале: подходите к тем, над кем висит хмурый значок.</div>').firstElementChild);
+  return wrap;
+}
+
 // ── НАСТРОЙКИ ────────────────────────────────────────────────────────────────
 // Плавность здесь — не косметика: именно она решает, насколько греется телефон.
 

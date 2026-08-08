@@ -6,6 +6,7 @@ import { xpForLevel } from './balance.js';
 import { pads, padState } from './game.js';
 import { COUNTERS, VAULT, DISTRICT } from './balance.js';
 import * as district from './district.js';
+import * as reviews from './reviews.js';
 import { coop, others, visiting } from './coop.js';
 import { clerkSpot } from './actors.js';
 import { player } from './actors.js';
@@ -26,6 +27,7 @@ export function initUI() {
     xpNum: $('#xpNum'), cashChip: $('.cap--cash'),
     joy: $('#joy'), base: $('#joyBase'), knob: $('#joyKnob'),
     worldUI: $('#worldUI'), toasts: $('#toasts'), nav: $('#nav'), hud: $('#hud'),
+    repV: $('#repV'), repPill: $('#repPill'), repBadge: $('#repBadge'),
   };
   bindJoystick();
   els.nav.addEventListener('click', (e) => {
@@ -34,6 +36,7 @@ export function initUI() {
   });
   $('#goldPill').addEventListener('click', () => window.__openTab('shop'));
   $('#gearBtn').addEventListener('click', () => window.__openTab('settings'));
+  $('#repPill').addEventListener('click', () => window.__openTab('social'));
 }
 
 export function setNav(tab) {
@@ -110,6 +113,15 @@ export function tickHud(dt) {
   const need = xpForLevel(S.level);
   els.lvlFill.style.width = `${clamp((S.xp / need) * 100, 0, 100)}%`;
   els.xpNum.textContent = `${fmt(S.xp)} / ${fmt(need)}`;
+
+  // Рейтинг всегда на виду: он тянет за собой и поток клиентов, и средний чек.
+  const rep = reviews.stars();
+  const repTxt = rep.toFixed(1);
+  if (els.repV.textContent !== repTxt) els.repV.textContent = repTxt;
+  els.repPill.classList.toggle('is-bad', rep < 3.5);
+  const unread = Math.max(0, (S.reviews?.length || 0) - (S.seenReviews || 0));
+  els.repBadge.hidden = unread === 0;
+  if (unread) els.repBadge.textContent = unread > 9 ? '9+' : String(unread);
 
   const cap = bagCap();
   const has = S.carry > 0.01;

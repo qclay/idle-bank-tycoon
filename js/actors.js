@@ -166,8 +166,19 @@ export function tickCustomers(dt, onServed) {
       const q = queueSpot(counterDef(k.counter), idx);
       stepTo(k, q.x, q.y, CUSTOMER.speed, dt);
       k.waited = Math.min(1, k.t / CUSTOMER.patience);
-      if (k.t > CUSTOMER.patience) { k.state = 'leave'; k.angry = true; dequeue(k); scene.setServeRing(k.view, -1); }
+      // Чем дольше очередь стоит, тем мрачнее лица: это видно с другого конца
+      // зала и подсказывает, куда бежать.
+      const m = reviews.waitMood(k.waited);
+      scene.setMood(k.view, m === 2 ? 'bad' : m === 1 ? 'meh' : null);
+      if (k.t > CUSTOMER.patience) {
+        // Ушёл, не дождавшись выдачи: заказ не забран, отзыв будет злым.
+        reviews.onWalkedOut(k.counter);
+        scene.setMood(k.view, 'bad');
+        k.state = 'leave'; k.angry = true; k.t = 0;
+        dequeue(k); scene.setServeRing(k.view, -1);
+      }
     } else if (k.state === 'serve') {
+      if (k.waited < REP.moodAt) scene.setMood(k.view, null);
       k.serve += dt * k.serveSpeed;
       if (k.serve >= CUSTOMER.serveTime) {
         onServed(k);

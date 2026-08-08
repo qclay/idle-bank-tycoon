@@ -5,10 +5,11 @@
 // растёт, ушёл неразобранным — падает и появляется плохой отзыв.
 
 import {
-  REP, INCIDENTS, REVIEW_NAMES, REVIEW_GOOD, REVIEW_BAD, REVIEW_SOLVED, REVIEW_MAX,
+  REP, INCIDENTS, REVIEW_NAMES, REVIEW_GOOD, REVIEW_BAD, REVIEW_SOLVED, REVIEW_WALKOUT, REVIEW_MAX,
   COUNTERS,
 } from './balance.js';
 import { S, save, emit } from './state.js';
+import { aiReviewBatch } from './net.js';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -37,16 +38,48 @@ function addRep(d) {
   S.rep = clamp((S.rep ?? REP.start) + d, REP.min, REP.max);
 }
 
-function addReview(kind, text, counterId) {
+function addReview(kind, text, counterId, reason = '') {
   const c = COUNTERS.find((x) => x.id === counterId);
-  S.reviews.unshift({
+  const rev = {
     id: Math.random().toString(36).slice(2, 8),
     kind, text, who: pick(REVIEW_NAMES),
     at: c ? c.name : '',
     stars: kind === 'good' ? 5 : kind === 'solved' ? 4 : 1 + Math.floor(Math.random() * 2),
     t: Date.now(),
-  });
+  };
+  S.reviews.unshift(rev);
   if (S.reviews.length > REVIEW_MAX) S.reviews.length = REVIEW_MAX;
+  queueAi(rev, reason);
+  return rev;
+}
+
+// ── Живые тексты от модели ───────────────────────────────────────────────────
+// Отзыв появляется сразу с заготовкой, иначе лента ждала бы сеть. Как только
+// модель ответит, текст подменяется на написанный ею — пачкой, чтобы не жечь
+// по запросу на каждого клиента.
+
+const pending = [];
+let aiTimer = 0;
+
+function queueAi(rev, reason) {
+  pending.push({ id: rev.id, kind: rev.kind, at: rev.at, reason });
+  if (pending.length >= 5) flushAi();
+  else if (!aiTimer) aiTimer = setTimeout(flushAi, 12000);
+}
+
+async function flushAi() {
+  clearTimeout(aiTimer); aiTimer = 0;
+  const batch = pending.splice(0, 8);
+  if (!batch.length) return;
+  const lines = await aiReviewBatch(batch.map(({ kind, at, reason }) => ({ kind, at, reason })));
+  if (!lines) return;                       // модель недоступна — остаются заготовки
+  batch.forEach((b, i) => {
+    const line = lines[i];
+    if (!line) return;
+    const rev = S.reviews.find((x) => x.id === b.id);
+    if (rev) { rev.text = line; rev.ai = true; }
+  });
+  emit('rep');
 }
 
 /** Клиента обслужили. Решаем, доволен он или будет претензия. */
@@ -61,8 +94,27 @@ export function onServed(k, counterId) {
     const inc = pick(INCIDENTS);
     return { upset: true, incident: inc, counterId };
   }
-  if (Math.random() < 0.14) { addRep(REP.goodDelta); addReview('good', pick(REVIEW_GOOD), counterId); emit('rep'); }
+  if (Math.random() < 0.14) { addRep(REP.goodDelta); addReview('good', pick(REVIEW_GOOD), counterId, 'всё прошло быстро'); emit('rep'); }
   return { upset: false };
+}
+
+/** Терпение на исходе: 0 — всё хорошо, 1 — мрачнеет, 2 — злится.
+ *  Настроение висит над головой, чтобы очередь было видно издалека. */
+export function waitMood(waited) {
+  if (waited >= REP.angryAt) return 2;
+  if (waited >= REP.moodAt) return 1;
+  return 0;
+}
+
+/** Клиент ушёл, не дождавшись выдачи. Самая дорогая потеря: и заказ не забрал,
+ *  и отзыв напишет. */
+export function onWalkedOut(counterId) {
+  ensure();
+  addRep(-REP.walkoutDelta);
+  addReview('bad', pick(REVIEW_WALKOUT), counterId, 'не дождался выдачи и ушёл');
+  S.stats.walkouts = (S.stats.walkouts || 0) + 1;
+  emit('rep');
+  save();
 }
 
 /** Клиент ушёл, так и не дождавшись разбора. */

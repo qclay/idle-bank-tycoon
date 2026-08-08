@@ -22,6 +22,11 @@ const views = { counters: new Map(), atms: new Map(), zones: new Map(), piles: n
 let vaultView = null;
 
 window.__openTab = (tab, sub) => {
+  if (tab === 'social') {
+    if (screens.isOpen()) screens.close(true);
+    screens.social(sub);
+    return;
+  }
   if (tab === 'settings') {
     if (screens.isOpen()) screens.close(true);
     screens.settings();
