@@ -330,6 +330,10 @@ svg{width:100%;height:100%;display:block}
 .foemark.is-off.is-lead .foemark__arrow{background:var(--ok)}
 .foemark:active{transform-origin:50% 100%}
 
+.wtag--crew .wtag__sign{box-shadow:inset 0 0 0 calc(2 * var(--du)) rgba(74,222,128,.95),
+  0 0 calc(14 * var(--du)) rgba(74,222,128,.5)}
+.wtag--crew .wtag__bar i{background:linear-gradient(90deg,#86EFAC,#22C55E)}
+
 .nametag{position:absolute;left:0;top:0;pointer-events:none;white-space:nowrap;
   padding:calc(3 * var(--du)) calc(9 * var(--du));border-radius:calc(9 * var(--du));
   background:var(--glass);color:#fff;font-size:calc(10 * var(--du));font-weight:900;

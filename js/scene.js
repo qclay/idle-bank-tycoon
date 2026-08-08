@@ -871,10 +871,15 @@ function initQuality() {
   });
 }
 
-/** Планка кадров: 60 — плавно, 40 — ощутимо холоднее, 30 — режим экономии. */
+/** Планка кадров: 60 — плавно, 40 — ощутимо холоднее, 30 — режим экономии.
+ *
+ *  Тикер Pixi пропускает кадр, если он пришёл хоть на волос раньше порога.
+ *  Поставить порог ровно в 60 на 60-герцовом экране — верный способ получить
+ *  рванину вдвое: половина кадров не дотягивает миллисекунду и выбрасывается.
+ *  Поэтому «плавно» — это вообще без порога, а нижним планкам даём запас. */
 export function setMaxFps(n) {
   quality.fps = n;
-  if (app) app.ticker.maxFPS = n;
+  if (app) app.ticker.maxFPS = n >= 58 ? 0 : n + 2;
 }
 
 /** Во сколько раз огрубляем картинку: 1 — как есть, 0.75 и 0.6 — экономнее. */
@@ -892,21 +897,23 @@ export function setPixelScale(k) {
 export function setAutoQuality(on) { quality.auto = on; quality.low = 0; }
 export function qualityInfo() { return { ...quality, res: app ? app.renderer.resolution : 0 }; }
 
-/** Раз в пару секунд смотрим, вытягивает ли устройство планку. Не вытягивает —
- *  сначала убираем лишние пиксели, потом снижаем частоту кадров. */
-let qAcc = 0, qFrames = 0;
+/** Раз в пару секунд смотрим, вытягивает ли устройство картинку. Убавляем
+ *  только по факту — и только пиксели: резать кадры значит делать игру хуже,
+ *  а просили сделать холоднее. Отпустило — возвращаем как было. */
+let qAcc = 0, qFrames = 0, qGood = 0;
 export function tickQuality(dt) {
   if (!quality.auto || !app) return;
   qAcc += dt; qFrames++;
   if (qAcc < 2) return;
   const fps = qFrames / qAcc;
   qAcc = 0; qFrames = 0;
-  if (fps < quality.fps * 0.8) {
+  if (fps < quality.fps * 0.75) {
+    qGood = 0;
     quality.low++;
-    if (quality.low === 2 && quality.scale > 0.74) setPixelScale(0.75);
-    else if (quality.low >= 3 && quality.fps > 30) setMaxFps(30);
-  } else if (fps > quality.fps * 0.95) {
+    if (quality.low >= 3 && quality.scale > 0.76) setPixelScale(0.75);
+  } else {
     quality.low = 0;
+    if (quality.scale < 0.99 && ++qGood >= 4) { qGood = 0; setPixelScale(1); }
   }
 }
 

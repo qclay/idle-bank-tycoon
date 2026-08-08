@@ -133,8 +133,10 @@ let workers = [];
 export function setWorkers(list) { workers = list || []; }
 function allWorkers() {
   const me = {
+    id: 'me',
     get x() { return player.x; }, get y() { return player.y; },
     get carry() { return S.carry; }, set carry(v) { S.carry = v; },
+    get speed() { return Math.hypot(player.vx || 0, player.vy || 0); },
     cap: bagCap(), local: true,
   };
   return [me, ...workers];
@@ -275,7 +277,7 @@ export function takeFromSource(src, room) {
 // ── Пады: стоишь — платишь ───────────────────────────────────────────────────
 
 /** Активная площадка под игроком: её же подсвечивает интерфейс. */
-export const padState = { id: null, short: false, arming: false };
+export const padState = { id: null, short: false, arming: false, crew: 0 };
 
 let coinTick = 0;
 const dwell = new Map();   // id площадки → сколько секунд игрок на ней стоит
@@ -285,13 +287,15 @@ const dwell = new Map();   // id площадки → сколько секун�
  *  и по его ощущению площадка просто не работала. */
 export function spendable() { return S.cash + S.carry; }
 
-function payFrom(amount) {
+function payFrom(amount, w = null) {
   let left = amount;
   const fromCash = Math.min(S.cash, left);
   S.cash -= fromCash; left -= fromCash;
-  if (left > 1e-9 && S.carry > 0) {
-    const fromBag = Math.min(S.carry, left);
-    S.carry -= fromBag; left -= fromBag;
+  const bag = w ? w.carry : S.carry;
+  if (left > 1e-9 && bag > 0) {
+    const fromBag = Math.min(bag, left);
+    if (w) w.carry = bag - fromBag; else S.carry -= fromBag;
+    left -= fromBag;
     // деньги из рук тоже засчитываем как выручку, иначе ломается статистика
     S.stats.earned += fromBag;
     S.stats.deposits += 1 / 60;
@@ -300,44 +304,57 @@ function payFrom(amount) {
   return amount - left;
 }
 
+// Стройку тянет вся смена: и хозяин, и гости. Каждый, кто встал на площадку,
+// подливает деньги своим темпом, поэтому вдвоём витрина открывается вдвое
+// быстрее — ради этого друга и зовут.
 function tickPads(dt, ui) {
   const list = pads();
   padState.id = null; padState.short = false; padState.arming = false;
+  padState.crew = 0;
   const alive = new Set();
+  const crew = allWorkers();
   for (const p of list) {
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
     // Круг с запасом: по прямоугольнику игрок постоянно промахивался мимо зоны.
     const r = Math.max(p.w, p.h) / 2 + 0.62;
-    if (dist(player.x, player.y, cx, cy) > r) continue;
-    alive.add(p.id);
-    const paid = S.padPaid[p.id] || 0;
-    if (paid >= p.cost) continue;
-    padState.id = p.id;
+    if ((S.padPaid[p.id] || 0) >= p.cost) continue;
 
-    // Списываем, только когда игрок остановился на площадке: иначе он терял
-    // деньги, просто проходя мимо по дороге к кассе.
-    const speed = Math.hypot(player.vx || 0, player.vy || 0);
-    if (speed > PAD_STOP_SPEED) { dwell.set(p.id, 0); padState.arming = true; continue; }
-    const t0 = (dwell.get(p.id) || 0) + dt;
-    dwell.set(p.id, t0);
-    if (t0 < PAD_DWELL) { padState.arming = true; continue; }
-    const have = spendable();
-    if (have < 1) { padState.short = true; continue; }
-    const rate = Math.max(p.cost / 2.2, 14);
-    const want = Math.min(rate * dt, p.cost - paid, have);
-    const pay = payFrom(want);
-    if (pay <= 0) { padState.short = true; continue; }
-    S.padPaid[p.id] = paid + pay;
-    // монеты сыплются из рук в площадку
-    coinTick += dt;
-    if (S.settings.fx && coinTick > 0.09) {
-      coinTick = 0;
-      fx.coins(player.x, player.y - 0.2, cx, cy, 1, { size: 0.26, life: 0.3, arc: 34, toZ: 0.05 });
+    let hands = 0;                 // сколько человек реально вкладывается сюда
+    for (const w of crew) {
+      if (dist(w.x, w.y, cx, cy) > r) continue;
+      const key = `${w.id}|${p.id}`;
+      alive.add(key);
+      if (w.local) padState.id = p.id;
+
+      // Списываем, только когда человек остановился на площадке: иначе деньги
+      // утекали просто по дороге к кассе.
+      if (w.speed > PAD_STOP_SPEED) { dwell.set(key, 0); if (w.local) padState.arming = true; continue; }
+      const t0 = (dwell.get(key) || 0) + dt;
+      dwell.set(key, t0);
+      if (t0 < PAD_DWELL) { if (w.local) padState.arming = true; continue; }
+
+      const paid = S.padPaid[p.id] || 0;
+      if (paid >= p.cost) break;
+      const have = S.cash + w.carry;
+      if (have < 1) { if (w.local) padState.short = true; continue; }
+      const rate = Math.max(p.cost / 2.2, 14);
+      const want = Math.min(rate * dt, p.cost - paid, have);
+      const pay = payFrom(want, w);
+      if (pay <= 0) { if (w.local) padState.short = true; continue; }
+      S.padPaid[p.id] = paid + pay;
+      hands++;
+      // монеты сыплются из рук в площадку
+      coinTick += dt;
+      if (S.settings.fx && coinTick > 0.09) {
+        coinTick = 0;
+        fx.coins(w.x, w.y - 0.2, cx, cy, 1, { size: 0.26, life: 0.3, arc: 34, toZ: 0.05 });
+      }
+      if (S.padPaid[p.id] >= p.cost - 1e-6) { finishPad(p, ui); break; }
     }
-    if (S.padPaid[p.id] >= p.cost - 1e-6) finishPad(p, ui);
+    if (padState.id === p.id) padState.crew = hands;
   }
   // сошёл с площадки — отсчёт начинается заново
-  for (const id of [...dwell.keys()]) if (!alive.has(id)) dwell.delete(id);
+  for (const k of [...dwell.keys()]) if (!alive.has(k)) dwell.delete(k);
 }
 
 function finishPad(p, ui) {

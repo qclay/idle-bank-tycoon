@@ -3,7 +3,7 @@
 import { fmt, du, clamp } from './core.js';
 import { S, save } from './state.js';
 import { xpForLevel } from './balance.js';
-import { pads } from './game.js';
+import { pads, padState } from './game.js';
 import { COUNTERS, VAULT, DISTRICT } from './balance.js';
 import * as district from './district.js';
 import { coop, others, visiting } from './coop.js';
@@ -126,13 +126,10 @@ export function tickHud(dt) {
 
 const tags = new Map();
 
-// Подписи в мире — это DOM: каждая запись transform стоит браузеру пересчёта
-// слоя. Шестьдесят раз в секунду это не нужно, глазу хватает двадцати.
-let tagAcc = 0;
-export function tickWorldTags(dt = 0.016) {
-  tagAcc += dt;
-  if (tagAcc < 0.05) return;
-  tagAcc = 0;
+// Подписи держатся за точки в мире, поэтому двигаются каждый кадр вместе с
+// камерой. Реже нельзя: на фоне плавного зала они начинают дёргаться, и это
+// читается как тормоза. Текст переписываем только когда он изменился.
+export function tickWorldTags() {
   tickFoeMarker();
   tickNameTags();
   const list = pads();
@@ -160,6 +157,8 @@ export function tickWorldTags(dt = 0.016) {
     if (nb.textContent !== txt) nb.textContent = txt;
     t.querySelector('.wtag__bar i').style.width = `${(paid / p.cost) * 100}%`;
     t.classList.toggle('wtag--done', S.cash < left && paid === 0);
+    // Вдвоём на одной площадке стройка идёт вдвое быстрее — это надо видеть.
+    t.classList.toggle('wtag--crew', padState.id === p.id && padState.crew > 1);
 
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
     // Рядом — полная подпись, издалека — компактный ценник: иначе таблички

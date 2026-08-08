@@ -154,6 +154,8 @@ export function makeSnap(customers) {
       k.moving ? 1 : 0,
     ]),
     m: [Math.round(S.cash), Math.round((S.rep || 0) * 100)],
+    p: S.padPaid || {},          // сколько уже вложено в каждую стройку
+    u: { ...S.ups },             // уровни улучшений — от них зависят площадки
   };
 }
 
@@ -176,6 +178,22 @@ export function applySnap(s) {
     S.zones[z.id].open = !!v[0]; S.zones[z.id].lvl = v[1] || 1;
   });
   if (s.m) { S.cash = s.m[0]; S.rep = s.m[1] / 100; }
+  if (s.p) S.padPaid = s.p;
+  if (s.u) Object.assign(S.ups, s.u);
+  // Открылась новая витрина — зал у гостя нужно пересобрать, иначе он
+  // продолжит смотреть на пустое место.
+  const key = shape();
+  const changed = key !== lastShape;
+  lastShape = key;
+  return changed;
+}
+
+let lastShape = '';
+function shape() {
+  return COUNTERS.map((c) => (S.counters[c.id].open ? 1 : 0)).join('')
+    + ATMS.map((a) => (S.atms[a.id].open ? 1 : 0)).join('')
+    + ZONES.map((z) => (S.zones?.[z.id]?.open ? 1 : 0)).join('')
+    + Object.values(S.ups || {}).join(',');
 }
 
 export function snapCustomers() {

@@ -90,15 +90,46 @@ const goto = async (p, x, y, ms = 2500) => {
   await p.waitForTimeout(ms);
 };
 
+/** Дойти и убедиться, что дошли: прямой автопилот иногда цепляется за мебель. */
+const walkTo = async (p, x, y, ms = 12000) => {
+  await p.evaluate(([tx, ty]) => { window.__drive = { x: tx, y: ty }; }, [x, y]);
+  const t0 = Date.now();
+  let last = 99, stuck = 0;
+  while (Date.now() - t0 < ms) {
+    await p.waitForTimeout(300);
+    const d = await p.evaluate(([tx, ty]) => {
+      const a = window.__game.actors.player;
+      return Math.hypot(a.x - tx, a.y - ty);
+    }, [x, y]);
+    if (d < 0.45) return true;
+    // упёрлись в мебель — отходим вбок и пробуем снова
+    if (Math.abs(d - last) < 0.05) {
+      stuck++;
+      if (stuck === 3) await p.evaluate(([tx, ty]) => { window.__drive = { x: tx, y: ty + 3 }; }, [x, y]);
+      if (stuck >= 6) { await p.evaluate(([tx, ty]) => { window.__drive = { x: tx, y: ty }; }, [x, y]); stuck = 0; }
+    } else stuck = 0;
+    last = d;
+  }
+  return false;
+};
+
 // ── 1. Хозяин заходит в свой пункт и разгоняет его ───────────────────────────
 
 const host = await open(HOST);
 await autopilot(host);
+// Прогресс хозяина живёт на сервере, поэтому прошлый прогон подтягивается сюда.
+// Приводим пункт к одному и тому же виду, иначе цены площадок каждый раз разные.
 await host.evaluate(() => {
   const { S, actors, net } = window.__game;
   S.cash = 2e5; S.level = 6;
-  for (const id of ['c1', 'c2']) { S.counters[id].open = true; S.counters[id].lvl = 4; }
+  for (const [id, st] of Object.entries(S.counters)) {
+    st.open = id === 'c1' || id === 'c2'; st.lvl = st.open ? 4 : 1; st.clerk = 0; st.cash = 0;
+  }
+  for (const st of Object.values(S.atms)) { st.open = false; st.lvl = 1; st.cash = 0; }
+  for (const st of Object.values(S.zones || {})) { st.open = false; st.lvl = 1; }
+  for (const k of Object.keys(S.ups)) S.ups[k] = 0;
   S.ups.bag = 3; S.ups.boots = 2;
+  S.padPaid = {};
   actors.refreshSolids(); actors.syncStaff();
   net.flush();
 });
@@ -199,7 +230,83 @@ const idleTo = await host.evaluate(() => window.__game.S.counters.c1.cash + wind
 ok('без гостя стойка не зарабатывает сама по себе', idleTo - idleFrom < (cashAfter - cashBefore) * 0.25,
    `с гостем +${Math.round(cashAfter - cashBefore)}, без гостя +${Math.round(idleTo - idleFrom)}`);
 
-// ── 6. Возвращение домой ─────────────────────────────────────────────────────
+// ── 6. Строим вместе ─────────────────────────────────────────────────────────
+// Главное, ради чего зовут друга: он встаёт на площадку и открывает витрину
+// наравне с хозяином, а вдвоём на одной площадке дело идёт вдвое быстрее.
+
+const pad = await host.evaluate(() => {
+  const { S, game } = window.__game;
+  S.cash = 3e5;
+  S.padPaid = {};
+  const p0 = game.pads().find((x) => x.kind === 'counter');
+  return p0 ? { id: p0.id, x: p0.x + p0.w / 2, y: p0.y + p0.h / 2, cost: p0.cost } : null;
+});
+ok('в зале есть стройка', !!pad);
+
+// хозяин стоит в стороне — платит только гость
+await host.evaluate(() => { window.__game.actors.player.x = 2.5; window.__game.actors.player.y = 3.6; });
+// Ставим гостя на площадку. Дорогу до неё проверяет отдельный тест площадок,
+// здесь важно другое: считает ли хозяин чужой вклад.
+await guest.evaluate(([x, y]) => {
+  window.__drive = { x, y };
+  const a = window.__game.actors.player;
+  a.x = x; a.y = y; a.vx = 0; a.vy = 0;
+}, [pad.x, pad.y]);
+await host.waitForTimeout(1200);
+
+// Перед каждым замером обнуляем стройку и пополняем кассу: иначе второй замер
+// упирается не в темп, а в пустой счёт.
+const measure = async (ms) => {
+  await host.evaluate((id) => { window.__game.S.padPaid[id] = 0; window.__game.S.cash = 3e6; }, pad.id);
+  await host.waitForTimeout(ms);
+  return host.evaluate((id) => window.__game.S.padPaid[id] || 0, pad.id);
+};
+
+const solo = await measure(600);
+ok('гость в одиночку двигает стройку хозяина', solo > 0,
+   `за 0,6 с вложено ${Math.round(solo)} из ${Math.round(pad.cost)}`);
+
+await guest.waitForTimeout(400);
+const seenByGuestPad = await guest.evaluate((id) => window.__game.S.padPaid?.[id] || 0, pad.id);
+ok('гость видит, сколько уже вложено', seenByGuestPad > 0, `у гостя ${Math.round(seenByGuestPad)}`);
+
+// Уводим гостя, пока хозяин идёт к площадке: иначе стройка успеет закончиться
+// прямо во время замера.
+await guest.evaluate(() => {
+  const a = window.__game.actors.player;
+  window.__drive = { x: 6, y: 11 }; a.x = 6; a.y = 11; a.vx = 0; a.vy = 0;
+});
+await host.waitForTimeout(600);
+ok('хозяин встал на ту же площадку', await walkTo(host, pad.x + 0.35, pad.y + 0.35));
+await host.evaluate(() => { window.__drive = null; window.__game.ui.joy.dx = 0; window.__game.ui.joy.dy = 0; });
+await host.waitForTimeout(600);
+const hostOnly = await measure(600);
+ok('хозяин один строит примерно с тем же темпом, что и гость',
+   Math.abs(hostOnly - solo) < solo * 0.35, `гость ${Math.round(solo)}, хозяин ${Math.round(hostOnly)}`);
+
+await guest.evaluate(([x, y]) => {
+  const a = window.__game.actors.player;
+  window.__drive = { x, y }; a.x = x; a.y = y; a.vx = 0; a.vy = 0;
+}, [pad.x - 0.3, pad.y - 0.3]);
+await host.waitForTimeout(900);
+const both = await measure(600);
+ok('вдвоём стройка идёт заметно быстрее', both > solo * 1.6,
+   `один ${Math.round(solo)}, вдвоём ${Math.round(both)}`);
+const crew = await host.evaluate(() => window.__game.game.padState.crew);
+ok('игра понимает, что на площадке двое', crew >= 2, `на площадке ${crew}`);
+
+// достраиваем до конца — витрина должна открыться и появиться у гостя
+await host.evaluate((p) => { window.__game.S.padPaid[p.id] = p.cost - 40; }, pad);
+await host.waitForTimeout(2500);
+const opened = await host.evaluate(() => Object.values(window.__game.S.counters).filter((c) => c.open).length);
+await guest.waitForTimeout(1200);
+const openedGuest = await guest.evaluate(() => Object.values(window.__game.S.counters).filter((c) => c.open).length);
+ok('витрина открылась и видна обоим', openedGuest === opened && opened >= 3,
+   `у хозяина ${opened}, у гостя ${openedGuest}`);
+
+await guest.screenshot({ path: `${OUT}/coop-build.png` });
+
+// ── 7. Возвращение домой ─────────────────────────────────────────────────────
 
 const mineBefore = await guest.evaluate(() => window.__game.S.counters.c2.open);
 await guest.evaluate(() => window.__goHome());
@@ -215,7 +322,7 @@ ok('чужой прогресс не остался у гостя', home.c2 === 
    `у хозяина c2=${mineBefore}, у гостя после возврата c2=${home.c2}`);
 ok('дома игрок снова считает свой мир', home.host);
 
-// ── 7. Хозяин вышел — мир считает оставшийся ─────────────────────────────────
+// ── 8. Хозяин вышел — мир считает оставшийся ─────────────────────────────────
 
 await guest.evaluate(() => window.__game.coop.join(
   window.Telegram.WebApp.initData, String(910001), String(910002)));

@@ -27,9 +27,10 @@ window.__openTab = (tab, sub) => {
     screens.settings();
     return;
   }
-  // В гостях мы помогаем руками, а не распоряжаемся чужим пунктом.
+  // В гостях строят руками — вставая на площадки в зале. Меню найма и покупок
+  // остаётся за хозяином: это его пункт и его кристаллы.
   if (coop.visiting() && tab !== 'bank') {
-    ui.toast('Это пункт друга — тратить его деньги нельзя');
+    ui.toast('Стройте вместе на площадках в зале — вдвоём вдвое быстрее');
     return;
   }
   if (tab === 'bank') { screens.close(); ui.setNav('bank'); return; }
@@ -145,12 +146,10 @@ export function applyQuality() {
   if (q === 'high') { scene.setMaxFps(60); scene.setPixelScale(1); }
   else if (q === 'saver') { scene.setMaxFps(30); scene.setPixelScale(0.7); }
   else {
-    // Слабые телефоны греются даже там, где кадры формально держатся: у них
-    // мало ядер и памяти. Таким сразу даём щадящий режим, остальным — полный,
-    // а дальше сцена сама убавит, если не потянет.
-    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
-    scene.setMaxFps(weak ? 40 : 60);
-    scene.setPixelScale(weak ? 0.8 : 1);
+    // Авто начинает с полной картинки и убавляет только по факту: гадать по
+    // числу ядер нельзя, иначе нормальный телефон без причины получит мыло.
+    scene.setMaxFps(60);
+    scene.setPixelScale(1);
   }
 }
 window.__applyQuality = applyQuality;
@@ -236,6 +235,27 @@ function checkUpset() {
   screens.incident(k, () => { incidentOpen = false; });
 }
 
+// Деньги в стройку списывает хозяин, поэтому у гостя монетки из рук сами не
+// полетят. Без них непонятно, что твой вклад вообще считается, — рисуем их по
+// растущему счётчику площадки.
+const padSeen = new Map();
+function guestPadFx(dt) {
+  const p = actors.player;
+  for (const pad of game.pads()) {
+    const cx = pad.x + pad.w / 2, cy = pad.y + pad.h / 2;
+    const paid = S.padPaid?.[pad.id] || 0;
+    const was = padSeen.get(pad.id) ?? paid;
+    padSeen.set(pad.id, paid);
+    if (paid <= was) continue;
+    if (Math.hypot(p.x - cx, p.y - cy) > Math.max(pad.w, pad.h) / 2 + 0.62) continue;
+    padFxTick += dt;
+    if (!S.settings.fx || padFxTick < 0.09) continue;
+    padFxTick = 0;
+    fx.coins(p.x, p.y - 0.2, cx, cy, 1, { size: 0.26, life: 0.3, arc: 34, toZ: 0.05 });
+  }
+}
+let padFxTick = 0;
+
 /** Обмен с комнатой: свои координаты туда, чужие — в зал. */
 function syncCoop(dt, guest) {
   if (!coop.coop.on) { game.setWorkers([]); return; }
@@ -251,6 +271,13 @@ function syncCoop(dt, guest) {
     const dx = r.x - r.rx, dy = r.y - r.ry;
     r.rx += dx * k; r.ry += dy * k;
     const moving = Math.abs(dx) + Math.abs(dy) > 0.02;
+    // Сеть шлёт координаты рывками десять раз в секунду, поэтому мгновенную
+    // скорость держим затухающей — иначе между пакетами напарник «замирает»
+    // и площадка начала бы списывать деньги прямо на ходу.
+    const nvx = (r.x - (r.nx ?? r.x)) / Math.max(dt, 0.001);
+    const nvy = (r.y - (r.ny ?? r.y)) / Math.max(dt, 0.001);
+    r.nx = r.x; r.ny = r.y;
+    r.spd = Math.max((r.spd || 0) * 0.82, Math.hypot(nvx, nvy));
     r.ft = (r.ft || 0) + dt;
     scene.setPlayerAnim(r.view, moving ? 'Walk' : 'Idle');
     scene.setPlayerFlip(r.view, r.dir !== -1);
@@ -265,16 +292,17 @@ function syncCoop(dt, guest) {
   if (coop.coop.host) {
     // гости работают наравне: хост считает их действия по их координатам
     game.setWorkers(list.map((r) => ({
-      x: r.x, y: r.y,
+      id: r.id, x: r.x, y: r.y,
       get carry() { return r.carry || 0; },
       set carry(v) { r.carry = v; },
+      speed: r.spd || 0,
       cap: actors.bagCap(), local: false,
     })));
     snapTick += dt;
     if (snapTick > 0.1) { snapTick = 0; coop.pushSnap(actors.customers); }
   } else {
     game.setWorkers([]);
-    coop.applySnap(coop.coop.snap);
+    if (coop.applySnap(coop.coop.snap)) { rebuildObjects(); actors.refreshSolids(); }
   }
 }
 
@@ -305,6 +333,7 @@ function loop(rawDt) {
     game.tick(dt, ui);
   } else {
     actors.showGhosts(coop.snapCustomers());
+    guestPadFx(dt);
   }
 
   // стопки наличных на объектах
@@ -342,7 +371,7 @@ function loop(rawDt) {
   scene.sortItems();
   const t2 = P ? performance.now() : 0;
   ui.tickHud(dt);
-  ui.tickWorldTags(dt);
+  ui.tickWorldTags();
   if (P) {
     const t3 = performance.now();
     P.sim += t1 - t0; P.draw += t2 - t1; P.ui += t3 - t2; P.n++;
