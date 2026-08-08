@@ -6,8 +6,8 @@
 https://qclay.github.io/idle-bank-tycoon/
 ```
 
-Ссылка постоянная: GitHub Pages пересобирает её при каждом пуше в `main`,
-адрес при этом не меняется. HTTPS есть — Telegram примет.
+Ссылка постоянная: GitHub Pages отдаёт папку `docs/` из ветки `main`.
+После правок нужно `npm run build` и пуш — адрес не меняется. HTTPS есть.
 
 ## Настройка бота
 

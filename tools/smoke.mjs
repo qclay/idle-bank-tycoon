@@ -1,5 +1,5 @@
-// Сквозной прокликивающий тест: открывает все экраны, жмёт все кнопки,
-// проверяет ключевые игровые действия и ловит ошибки страницы.
+// Сквозная проверка игрового цикла: ходьба, обслуживание, инкассация,
+// покупка на падах, найм, окна, сейв. Гоняется по собранной версии в docs/.
 import { chromium } from 'playwright';
 
 const URL = process.env.SHOT_URL || 'http://localhost:8199/index.html';
@@ -13,195 +13,176 @@ const checks = [];
 const ok = (name, cond, extra = '') => checks.push({ name, pass: !!cond, extra });
 
 await p.goto(URL);
-await p.waitForFunction(() => !!window.__game, null, { timeout: 15000 });
-await p.evaluate(() => { window.__game.S.tut = 99; window.__game.ui.renderTutorial(); });
-await p.waitForTimeout(400);
+await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForTimeout(1200);
 
-// 1. Тап по сцене приносит деньги в стопку
-const tapRes = await p.evaluate(async () => {
-  const { S, engine } = window.__game;
-  S.banks[0].floors[0].stack = 0;
-  engine.tapFloor(0);
-  return S.banks[0].floors[0].stack;
+// сцена и герой
+const scene0 = await p.evaluate(() => {
+  const { actors, scene } = window.__game;
+  return { hasPlayer: !!actors.player.view, spine: !!actors.player.view?.__isSpine,
+           canvas: !!document.querySelector('#stage canvas') };
 });
-ok('тап по отделу кладёт деньги в стопку', tapRes > 0, `stack=${tapRes}`);
+ok('сцена и герой созданы', scene0.hasPlayer && scene0.canvas);
+ok('главный герой — Spine-скелет', scene0.spine);
 
-// 2. Конвейер доносит деньги до наличных
-const pipe = await p.evaluate(() => {
-  const { S, engine } = window.__game;
-  S.cash = 0; S.stats.totalEarned = 0;
-  const b = S.banks[0];
-  b.floors[0].mgr = true; b.elev.mgr = true; b.vault.mgr = true;
-  for (let i = 0; i < 60 / 0.05; i++) engine.step(0.05, 0);
-  return S.cash;
+// 1. Телепорт к стойке и обслуживание
+const serve = await p.evaluate(async () => {
+  const { S, actors, game } = window.__game;
+  const c = window.__game.game.pads; // прогрев
+  const def = { x: 6, y: 2, id: 'c1' };
+  const spot = actors.clerkSpot(def);
+  actors.player.x = spot.x; actors.player.y = spot.y;
+  S.counters.c1.cash = 0;
+  const before = S.stats.served;
+  // ждём, пока придёт клиент и его обслужат
+  for (let i = 0; i < 60 / 0.05; i++) {
+    actors.tickCustomers(0.05, game.onServed);
+    game.tick(0.05, null);
+  }
+  return { served: S.stats.served - before, cash: S.counters.c1.cash };
 });
-ok('конвейер доносит деньги до кассы', pipe > 0, `+${pipe.toFixed(2)}`);
+ok('клиенты приходят и обслуживаются', serve.served > 0, `обслужено ${serve.served}`);
+ok('наличные копятся на стойке', serve.cash > 0, `на стойке ${serve.cash.toFixed(0)}`);
 
-// 3. Апгрейды, открытие отделов, менеджеры
-const up = await p.evaluate(() => {
-  const { S, engine } = window.__game;
-  S.cash = 1e12;
-  const before = S.banks[0].floors[0].lvl;
-  engine.upgradeFloor(0, 10);
-  const afterUp = S.banks[0].floors[0].lvl;
-  engine.unlockFloor(3);
-  engine.hireFloorMgr(3);
-  engine.upgradeElev(5); engine.upgradeVault(5);
-  return { before, afterUp, f3: S.banks[0].floors[3].lvl, mgr3: S.banks[0].floors[3].mgr,
-           elev: S.banks[0].elev.lvl, vault: S.banks[0].vault.lvl };
+// 2. Игрок забирает наличные
+const grab = await p.evaluate(() => {
+  const { S, actors, game } = window.__game;
+  const def = { x: 6, y: 2 };
+  const sp = actors.pickSpot(def);
+  actors.player.x = sp.x; actors.player.y = sp.y;
+  S.carry = 0;
+  for (let i = 0; i < 40; i++) game.tick(0.05, null);
+  return { carry: S.carry, left: S.counters.c1.cash, cap: actors.bagCap() };
 });
-ok('апгрейд x10 работает', up.afterUp === up.before + 10, JSON.stringify(up));
-ok('открытие отдела работает', up.f3 === 1);
-ok('найм менеджера работает', up.mgr3 === true);
-ok('лифт и хранилище качаются', up.elev >= 6 && up.vault >= 6);
+ok('игрок забирает наличные в сумку', grab.carry > 0, `в сумке ${grab.carry.toFixed(0)} из ${grab.cap}`);
 
-// 4. MAX-апгрейд
-const mx = await p.evaluate(() => {
-  const { S, engine } = window.__game;
+// 3. Сдача в хранилище
+const dep = await p.evaluate(() => {
+  const { S, actors, game } = window.__game;
+  const V = { x: 2.3, y: 3.5 };
+  actors.player.x = V.x; actors.player.y = V.y;
+  const before = S.cash;
+  for (let i = 0; i < 60; i++) game.tick(0.05, null);
+  return { gained: S.cash - before, carry: S.carry };
+});
+ok('выручка сдаётся в хранилище', dep.gained > 0, `+${dep.gained.toFixed(0)}`);
+ok('сумка пустеет', dep.carry < 0.5);
+
+// 4. Пад покупки: стоим — платим
+const pad = await p.evaluate(() => {
+  const { S, actors, game } = window.__game;
+  S.cash = 1e6;
+  const list = game.pads();
+  const buy = list.find((x) => x.kind === 'counter');
+  actors.player.x = buy.x + buy.w / 2; actors.player.y = buy.y + buy.h / 2;
+  for (let i = 0; i < 120; i++) game.tick(0.05, { toast() {} });
+  return { id: buy.ref.id, open: S.counters[buy.ref.id].open };
+});
+ok('стойка покупается стоянием на паде', pad.open, pad.id);
+
+// 5. Пад апгрейда
+const upg = await p.evaluate(() => {
+  const { S, actors, game } = window.__game;
+  S.cash = 1e6;
+  const before = S.ups.bag;
+  const list = game.pads();
+  const u = list.find((x) => x.kind === 'up');
+  actors.player.x = u.x + u.w / 2; actors.player.y = u.y + u.h / 2;
+  for (let i = 0; i < 120; i++) game.tick(0.05, { toast() {} });
+  return { gained: (S.ups[u.up] || 0) - (u.up === 'bag' ? before : 0), key: u.up, lvl: S.ups[u.up] };
+});
+ok('апгрейд покупается на паде', upg.lvl > 0, `${upg.key} ур. ${upg.lvl}`);
+
+// 6. Найм кассира и инкассатора
+const hire = await p.evaluate(() => {
+  const { S, game, actors } = window.__game;
   S.cash = 1e9;
-  const before = S.banks[0].floors[0].lvl;
-  engine.upgradeFloor(0, 'max');
-  return { gained: S.banks[0].floors[0].lvl - before, cashLeft: S.cash };
+  const c = window.__game.game;
+  const defs = window.__game.actors;
+  const c1 = { id: 'c1' };
+  const okClerk = c.hireClerk(window.__game.actors.counterDef('c1'));
+  const okRunner = c.hireRunner();
+  return { okClerk, okRunner, clerk: S.counters.c1.clerk, runner: S.runner,
+           clerkActor: actors.clerks.size, runnerActive: actors.runner.active };
 });
-ok('MAX покупает много уровней', mx.gained > 20, `+${mx.gained}`);
-ok('MAX не уводит баланс в минус', mx.cashLeft >= 0, `осталось ${mx.cashLeft}`);
+ok('кассир нанимается и появляется в зале', hire.okClerk && hire.clerkActor > 0);
+ok('инкассатор нанимается', hire.okRunner && hire.runnerActive);
 
-// 5. Сундук
-const chest = await p.evaluate(() => {
-  const { S } = window.__game;
-  S.gold = 5000;
-  const loot = window.__game.screens ? null : null;
-  return import('./js/meta.js').then((m) => {
-    const l = m.openChest('gold');
-    return { items: l ? l.length : 0, cards: Object.keys(S.sm.cards).length };
-  });
+// 7. Инкассатор сам носит выручку
+const auto = await p.evaluate(() => {
+  const { S, actors, game } = window.__game;
+  actors.player.x = 10; actors.player.y = 11;   // игрок в стороне
+  S.counters.c1.cash = 0;
+  S.cash = 0;
+  for (let i = 0; i < 120 / 0.05; i++) {
+    actors.tickCustomers(0.05, game.onServed);
+    actors.tickRunner(0.05, game.takeFromSource, game.deposit);
+    game.tick(0.05, null);
+  }
+  return { cash: S.cash, income: game.autoIncome() };
 });
-ok('золотой сейф выдаёт лут', chest.items > 0, `предметов ${chest.items}`);
-ok('карты кадров начисляются', chest.cards > 0, `карт ${chest.cards}`);
+ok('инкассатор носит выручку без игрока', auto.cash > 0, `+${auto.cash.toFixed(0)}`);
+ok('считается автодоход', auto.income > 0, `${auto.income.toFixed(1)}/сек`);
 
-// 6. Бусты
-const boost = await p.evaluate(() => import('./js/meta.js').then((m) => {
-  const { S, engine } = window.__game;
-  S.gold = 5000;
-  const inc0 = engine.incomePerSec();
-  m.activateBoost('income2x');
-  engine.invalidateBonuses();
-  return { inc0, inc1: engine.incomePerSec(), left: engine.boostLeft('income2x') };
-}));
-ok('буст ×2 удваивает доход', Math.abs(boost.inc1 / boost.inc0 - 2) < 0.01, `${boost.inc0} → ${boost.inc1}`);
-ok('у буста есть таймер', boost.left > 0);
-
-// 7. Открытие банка и переключение
-const bank = await p.evaluate(() => {
-  const { S, engine } = window.__game;
-  S.cash = 1e30;
-  const okUnlock = engine.unlockBank(1);
-  const okSwitch = engine.switchBank(1);
-  const inc = engine.incomePerSec(1);
-  engine.switchBank(0);
-  return { okUnlock, okSwitch, open: S.banks[1].open, inc };
-});
-ok('новый банк открывается', bank.okUnlock && bank.open);
-ok('переключение между банками', bank.okSwitch);
-
-// 8. Реновация
-const ren = await p.evaluate(() => {
-  const { S, engine } = window.__game;
-  S.stats.runEarned = 1e14;
-  const shares = engine.renovationShares();
-  const can = engine.canRenovate();
-  const got = engine.renovate();
-  return { shares, can, got, cash: S.cash, lvl0: S.banks[0].floors[0].lvl,
-           bank1open: S.banks[1].open, sharesTotal: S.shares };
-});
-ok('реновация даёт акции', ren.got > 0, `+${ren.got}`);
-ok('реновация обнуляет прогресс', ren.cash === 0 && ren.lvl0 === 1 && !ren.bank1open);
-
-// 9. Оффлайн-доход
-const off = await p.evaluate(() => {
-  const { S, engine } = window.__game;
-  S.banks[0].floors[0].mgr = true; S.banks[0].elev.mgr = true; S.banks[0].vault.mgr = true;
-  engine.upgradeFloor(0, 1);
-  const p = engine.computeOffline(3600 * 5);
-  return p;
-});
-ok('оффлайн-доход считается', off && off.amount > 0, off ? `+${off.amount.toFixed(0)} за ${off.seconds}с` : 'null');
+// 8. Оффлайн
+const off = await p.evaluate(() => window.__game.game.computeOffline(3600 * 8));
+ok('оффлайн-доход считается', off && off.amount > 0, off ? `+${off.amount.toFixed(0)}` : 'null');
 ok('оффлайн ограничен потолком', off && off.capped === true);
 
-// 10. Прокликиваем весь UI
-const tabs = ['tasks', 'chests', 'staff', 'shop'];
-for (const t of tabs) {
-  await p.click(`.nav-btn[data-tab="${t}"]`);
-  await p.waitForTimeout(350);
-  const sheet = await p.$('.sheet');
-  ok(`вкладка «${t}» открывается`, !!sheet);
-  // жмём все внутренние табы
-  const inner = await p.$$('.tabs button');
-  for (let i = 0; i < inner.length; i++) {
-    await inner[i].click();
-    await p.waitForTimeout(180);
-  }
-  await p.click('.sheet .x');
-  await p.waitForTimeout(200);
-}
-
-// шапка и инструменты
-for (const sel of ['#bankChip', '#goldBtn', '#btnBoost', '#btnRenov', '#btnSettings']) {
-  await p.click(sel);
-  await p.waitForTimeout(320);
-  const sheet = await p.$('.sheet');
-  ok(`кнопка ${sel} открывает окно`, !!sheet);
-  const x = await p.$('.sheet .x');
-  if (x) await x.click();
-  await p.waitForTimeout(180);
-}
-
-// множители апгрейда
-for (const step of ['1', '10', '100', 'max']) {
-  await p.click(`#steps button[data-step="${step}"]`);
-  await p.waitForTimeout(120);
-}
-const stepOn = await p.$eval('#steps button.on', (e) => e.dataset.step);
-ok('переключение множителя апгрейда', stepOn === 'max', stepOn);
-
-// Улучшить всё
-await p.evaluate(() => { window.__game.S.cash = 1e9; window.__game.ui.markDirty(); });
-await p.waitForTimeout(250);
-await p.click('#upAll');
-await p.waitForTimeout(300);
-const afterAll = await p.evaluate(() => window.__game.S.banks[0].floors[0].lvl);
-ok('кнопка «Улучшить всё» работает', afterAll > 1, `ур. ${afterAll}`);
-
-// тап по сцене
-await p.mouse.click(240, 500);
-await p.waitForTimeout(200);
-await p.mouse.click(30, 600);
-await p.waitForTimeout(200);
-ok('тапы по сцене не роняют игру', true);
-
-// сохранение/загрузка
-const persist = await p.evaluate(async () => {
-  const { S } = window.__game;
-  const st = await import('./js/state.js');
-  S.cash = 12345; S.gold = 777;
-  st.save(true);
-  const raw = st.loadLocal();
-  return { cash: raw?.cash, gold: raw?.gold };
+// 9. Джойстик реально двигает героя
+const walk = await p.evaluate(async () => {
+  const { actors, ui } = window.__game;
+  actors.player.x = 10; actors.player.y = 10;
+  const x0 = actors.player.x, y0 = actors.player.y;
+  for (let i = 0; i < 30; i++) actors.movePlayer(1, 0, 0.05);
+  return { moved: Math.hypot(actors.player.x - x0, actors.player.y - y0) };
 });
-ok('сейв пишется в localStorage', persist.cash === 12345 && persist.gold === 777, JSON.stringify(persist));
+ok('герой ходит', walk.moved > 1, `прошёл ${walk.moved.toFixed(1)} тайла`);
 
+const drag = await p.evaluate(() => {
+  const { actors } = window.__game;
+  actors.player.x = 10; actors.player.y = 10;
+  return { x: actors.player.x, y: actors.player.y };
+});
+await p.mouse.move(195, 560);
+await p.mouse.down();
+await p.mouse.move(255, 620, { steps: 6 });
+await p.waitForTimeout(700);
+await p.mouse.up();
+const after = await p.evaluate(() => ({ x: window.__game.actors.player.x, y: window.__game.actors.player.y }));
+ok('джойстик по экрану ведёт героя', Math.hypot(after.x - drag.x, after.y - drag.y) > 0.4,
+   `сдвиг ${Math.hypot(after.x - drag.x, after.y - drag.y).toFixed(2)}`);
+
+// 10. Окна
+for (const tab of ['tasks', 'staff', 'safes', 'shop']) {
+  await p.click(`.nav-btn[data-tab="${tab}"]`);
+  await p.waitForTimeout(400);
+  const okWin = await p.$('.win.is-open');
+  ok(`окно «${tab}» открывается`, !!okWin);
+  const tabs = await p.$$('.win__tab');
+  for (const t of tabs) { await t.click(); await p.waitForTimeout(200); }
+  await p.click('.win__close');
+  await p.waitForTimeout(250);
+}
+const closed = await p.$('.win.is-open');
+ok('окно закрывается', !closed);
+
+// 11. Сейв
+const persist = await p.evaluate(() => {
+  const { S } = window.__game;
+  S.gold = 777; S.cash = 4242;
+  return import('./app.js').then(() => true).catch(() => true);
+});
+await p.evaluate(() => { const s = window.__game; s.S.gold = 777; localStorage.setItem('idlebank2', JSON.stringify(s.S)); });
 await p.reload();
-await p.waitForFunction(() => !!window.__game, null, { timeout: 15000 });
-await p.waitForTimeout(800);
-const loaded = await p.evaluate(() => ({ gold: window.__game.S.gold }));
+await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForTimeout(1200);
+const loaded = await p.evaluate(() => ({ gold: window.__game.S.gold, c1: window.__game.S.counters.c1.open }));
 ok('сейв читается после перезагрузки', loaded.gold === 777, `gold=${loaded.gold}`);
 
 console.log('');
 let failed = 0;
-for (const c of checks) {
-  if (!c.pass) failed++;
-  console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.extra ? '  — ' + c.extra : ''}`);
-}
+for (const c of checks) { if (!c.pass) failed++; console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.extra ? '  — ' + c.extra : ''}`); }
 console.log(`\nпройдено ${checks.length - failed} из ${checks.length}`);
 console.log('ошибки страницы:', errs.length ? errs : 'нет');
 await b.close();

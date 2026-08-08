@@ -1,497 +1,208 @@
-// HUD, панели этажей, нижняя навигация, модалки, тосты, туториал.
+// HUD, джойстик, подсказки над падами, тосты, нижняя навигация.
 
-import { fmt, money, int, dur, clock, pct } from './fmt.js';
-import {
-  FLOOR_DEFS, BANKS, UPGRADE_STEPS, BOOSTS, TUTORIAL, CURVE,
-} from './balance.js';
-import { S, bank, save, emit, onChange } from './state.js';
-import {
-  floorUpCost, floorUnlockCost, floorMgrCost, floorStats, floorMaxLevels,
-  elevUpCost, elevMgrCost, elevStats, elevMaxLevels,
-  vaultUpCost, vaultMgrCost, vaultStats, vaultMaxLevels,
-  upgradeFloor, upgradeElev, upgradeVault, unlockFloor,
-  hireFloorMgr, hireElevMgr, hireVaultMgr,
-  incomePerSec, openFloors, bonuses, boostLeft, milestonesUpTo, nextMilestone,
-  canRenovate, bottleneck,
-} from './engine.js';
+import { fmt, du, clamp } from './core.js';
+import { S, save } from './state.js';
 import { xpForLevel } from './balance.js';
+import { pads } from './game.js';
+import { COUNTERS, VAULT } from './balance.js';
+import { clerkSpot } from './actors.js';
+import { player } from './actors.js';
+import { bagCap } from './actors.js';
+import { dist } from './core.js';
 import * as scene from './scene.js';
-import { badgeCounts } from './meta.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 let els = {};
-let floorEls = new Map();
-let elevEl = null, vaultEl = null;
-let dirty = true;
-
-export function markDirty() { dirty = true; }
+export const joy = { dx: 0, dy: 0, active: false };
 
 export function initUI() {
   els = {
-    hud: $('#hud'), cash: $('#cash'), gold: $('#gold'), shares: $('#shares'),
-    income: $('#income'), lvlNum: $('#lvlNum'), lvlFill: $('#lvlFill'),
-    bankName: $('#bankName'), bankCity: $('#bankCity'), bankChip: $('#bankChip'),
-    boostStrip: $('#boostStrip'), floorUI: $('#floorUI'), steps: $('#steps'),
-    upAll: $('#upAll'), upAllCost: $('#upAllCost'), nav: $('#nav'),
-    modalRoot: $('#modalRoot'), toasts: $('#toasts'),
-    tutorial: $('#tutorial'), tutText: $('#tutText'), tutOk: $('#tutOk'),
-    bankFlag: $('.chip-flag'),
+    cash: $('#cash'), gold: $('#gold'), lvlN: $('#lvlN'), lvlFill: $('#lvlFill'),
+    carry: $('#carry'), carryFill: $('#carryFill'), carryTxt: $('#carryTxt'),
+    joy: $('#joy'), base: $('#joyBase'), knob: $('#joyKnob'),
+    worldUI: $('#worldUI'), toasts: $('#toasts'), nav: $('#nav'), hud: $('#hud'),
   };
-
-  buildSteps();
-  els.upAll.addEventListener('click', doUpgradeAll);
-  onChange(() => { dirty = true; });
-
+  bindJoystick();
   els.nav.addEventListener('click', (e) => {
     const b = e.target.closest('.nav-btn');
-    if (!b) return;
-    openTab(b.dataset.tab);
+    if (b) window.__openTab(b.dataset.tab);
   });
-
-  els.bankChip.addEventListener('click', () => window.__screens.banks());
-  $('#goldBtn').addEventListener('click', () => openTab('shop'));
-  $('#btnBoost').addEventListener('click', () => window.__screens.boosts());
-  $('#btnRenov').addEventListener('click', () => window.__screens.renovation());
-  $('#btnSettings').addEventListener('click', () => window.__screens.settings());
-
-  els.tutOk.addEventListener('click', nextTutorial);
-  renderTutorial();
+  $('#goldPill').addEventListener('click', () => window.__openTab('shop'));
 }
 
-function openTab(tab) {
-  $$('.nav-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tab));
-  const s = window.__screens;
-  if (tab === 'bank') { closeModal(); return; }
-  if (tab === 'tasks') s.tasks();
-  else if (tab === 'chests') s.chests();
-  else if (tab === 'staff') s.staff();
-  else if (tab === 'shop') s.shop();
+export function setNav(tab) {
+  $$('.nav-btn').forEach((b) => b.classList.toggle('is-on', b.dataset.tab === tab));
 }
 
-export function resetNav() {
-  $$('.nav-btn').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === 'bank'));
-}
+// ── Джойстик ─────────────────────────────────────────────────────────────────
 
-// ── Множитель апгрейда ────────────────────────────────────────────────────────
+function bindJoystick() {
+  let id = null, ox = 0, oy = 0;
+  const R = () => 52 * du();
 
-function buildSteps() {
-  els.steps.innerHTML = '';
-  for (const st of UPGRADE_STEPS) {
-    const b = document.createElement('button');
-    b.textContent = st === 'max' ? 'MAX' : 'x' + st;
-    b.dataset.step = st;
-    b.addEventListener('click', () => { S.upStep = st; save(); syncSteps(); dirty = true; });
-    els.steps.appendChild(b);
-  }
-  syncSteps();
-}
+  const start = (x, y, pid) => {
+    id = pid; ox = x; oy = y;
+    els.joy.classList.add('is-on');
+    els.base.style.left = `${x}px`; els.base.style.top = `${y}px`;
+    els.knob.style.left = `${x}px`; els.knob.style.top = `${y}px`;
+    joy.active = true;
+  };
+  const move = (x, y) => {
+    let dx = x - ox, dy = y - oy;
+    const d = Math.hypot(dx, dy);
+    const r = R();
+    if (d > r) { dx = (dx / d) * r; dy = (dy / d) * r; }
+    els.knob.style.left = `${ox + dx}px`; els.knob.style.top = `${oy + dy}px`;
+    const k = Math.min(1, d / r);
+    if (d < 6) { joy.dx = 0; joy.dy = 0; return; }
+    // экранное направление → мировое (обратная изометрия)
+    const nx = dx / (d || 1), ny = dy / (d || 1);
+    const wx = (ny / (1 / 2) + nx) / 2;
+    const wy = (ny / (1 / 2) - nx) / 2;
+    const wl = Math.hypot(wx, wy) || 1;
+    joy.dx = (wx / wl) * k;
+    joy.dy = (wy / wl) * k;
+  };
+  const end = () => {
+    id = null; joy.dx = 0; joy.dy = 0; joy.active = false;
+    els.joy.classList.remove('is-on');
+  };
 
-function syncSteps() {
-  $$('#steps button').forEach((b) => b.classList.toggle('on', String(S.upStep) === b.dataset.step));
-}
-
-function stepN() { return S.upStep === 'max' ? 'max' : Number(S.upStep); }
-function stepLabel() { return S.upStep === 'max' ? 'MAX' : 'x' + S.upStep; }
-
-// ── Панели этажей ─────────────────────────────────────────────────────────────
-
-function makeFloorEl(i) {
-  const el = document.createElement('div');
-  el.className = 'fbar';
-  el.dataset.i = i;
-  el.innerHTML = `
-    <div class="fbar-in">
-      <div class="fbar-ic"></div>
-      <div class="fbar-txt"><b></b><i></i><div class="ms-bar"><i></i></div></div>
-      <button class="btn btn-up"><b></b><i></i></button>
-      <button class="btn btn-mgr">👔</button>
-    </div>
-    <button class="btn btn-unlock"></button>`;
-  el.querySelector('.btn-up').addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (upgradeFloor(i, stepN())) { fxTap(e.currentTarget); haptic('light'); }
-    dirty = true;
+  els.joy.addEventListener('pointerdown', (e) => {
+    if (id !== null) return;
+    els.joy.setPointerCapture(e.pointerId);
+    start(e.clientX, e.clientY, e.pointerId);
   });
-  el.querySelector('.btn-mgr').addEventListener('click', (e) => {
-    e.stopPropagation();
-    window.__screens.manager('floor', i);
+  els.joy.addEventListener('pointermove', (e) => {
+    if (id !== e.pointerId) return;
+    move(e.clientX, e.clientY);
   });
-  el.querySelector('.btn-unlock').addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (unlockFloor(i)) { toast(`Открыт отдел «${FLOOR_DEFS[i].name}»`); haptic('medium'); scene.clampCam(); }
-    else toast('Не хватает денег');
-    dirty = true;
-  });
-  els.floorUI.appendChild(el);
-  return el;
-}
-
-function makeUnitEl(kind) {
-  const el = document.createElement('div');
-  el.className = 'fbar fbar-wide';
-  el.innerHTML = `
-    <div class="fbar-in">
-      <div class="fbar-ic">${kind === 'elev' ? '🛗' : '🔒'}</div>
-      <div class="fbar-txt"><b>${kind === 'elev' ? 'Лифт' : 'Хранилище'}</b><i></i><div class="ms-bar"><i></i></div></div>
-      <button class="btn btn-up"><b></b><i></i></button>
-      <button class="btn btn-mgr">👔</button>
-    </div>`;
-  el.querySelector('.btn-up').addEventListener('click', (e) => {
-    e.stopPropagation();
-    const ok = kind === 'elev' ? upgradeElev(stepN()) : upgradeVault(stepN());
-    if (ok) { fxTap(e.currentTarget); haptic('light'); }
-    dirty = true;
-  });
-  el.querySelector('.btn-mgr').addEventListener('click', (e) => {
-    e.stopPropagation();
-    window.__screens.manager(kind);
-  });
-  els.floorUI.appendChild(el);
-  return el;
-}
-
-function syncFloorEls() {
-  const n = scene.visibleFloors();
-  for (const [i, el] of floorEls) {
-    if (i >= n) { el.remove(); floorEls.delete(i); }
-  }
-  for (let i = 0; i < n; i++) {
-    if (!floorEls.has(i)) floorEls.set(i, makeFloorEl(i));
-  }
-  if (!elevEl) elevEl = makeUnitEl('elev');
-  if (!vaultEl) vaultEl = makeUnitEl('vault');
-}
-
-function positionBars() {
-  const H = scene.viewH();
-  for (const [i, el] of floorEls) {
-    const y = scene.floorBarTop(i);
-    const off = y < -60 || y > H + 10;
-    el.style.visibility = off ? 'hidden' : 'visible';
-    if (!off) el.style.transform = `translateY(${y.toFixed(1)}px)`;
-  }
-  // Панели лифта и хранилища стоят в самом низу мира: 46..92 и 0..46
-  const yv = scene.worldToScreen(46), ye = scene.worldToScreen(scene.LAYOUT.barsH);
-  for (const [el, y] of [[vaultEl, yv], [elevEl, ye]]) {
-    if (!el) continue;
-    const off = y < -60 || y > H + 10;
-    el.style.visibility = off ? 'hidden' : 'visible';
-    if (!off) el.style.transform = `translateY(${y.toFixed(1)}px)`;
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+    els.joy.addEventListener(ev, (e) => { if (id === e.pointerId) end(); });
   }
 }
 
-function renderFloorBar(i) {
-  const el = floorEls.get(i);
-  if (!el) return;
-  const f = bank().floors[i];
-  const fd = FLOOR_DEFS[i];
-  const inEl = el.querySelector('.fbar-in');
-  const lockEl = el.querySelector('.btn-unlock');
+// ── HUD ──────────────────────────────────────────────────────────────────────
 
-  if (f.lvl <= 0) {
-    inEl.style.display = 'none';
-    lockEl.style.display = '';
-    const cost = floorUnlockCost(i);
-    const can = S.cash >= cost;
-    lockEl.classList.toggle('off', !can);
-    lockEl.innerHTML = `<span>🔓 ${fd.name}</span>&nbsp;·&nbsp;<span>${money(cost)}</span>`;
-    return;
+let hudAcc = 0;
+export function tickHud(dt) {
+  hudAcc += dt;
+  if (hudAcc < 0.08) return;
+  hudAcc = 0;
+  els.cash.textContent = fmt(S.cash);
+  els.gold.textContent = fmt(S.gold);
+  els.lvlN.textContent = S.level;
+  els.lvlFill.style.width = `${clamp((S.xp / xpForLevel(S.level)) * 100, 0, 100)}%`;
+
+  const cap = bagCap();
+  const has = S.carry > 0.01;
+  els.carry.hidden = !has;
+  if (has) {
+    const k = clamp(S.carry / cap, 0, 1);
+    els.carryFill.style.width = `${k * 100}%`;
+    els.carryTxt.textContent = fmt(S.carry);
+    els.carry.classList.toggle('is-full', k > 0.995);
   }
-  inEl.style.display = '';
-  lockEl.style.display = 'none';
-
-  const st = floorStats(i);
-  el.querySelector('.fbar-ic').textContent = fd.icon;
-  el.querySelector('.fbar-txt b').textContent = fd.short;
-  el.querySelector('.fbar-txt i').textContent = `ур. ${int(f.lvl)} · ${money(st.rate)}/с`;
-
-  const nm = nextMilestone(f.lvl);
-  const prev = prevMilestoneLvl(f.lvl);
-  const p = (f.lvl - prev) / (nm.lvl - prev);
-  el.querySelector('.ms-bar i').style.width = `${Math.max(0, Math.min(1, p)) * 100}%`;
-
-  const nStep = stepN();
-  const count = nStep === 'max' ? Math.max(1, floorMaxLevels(i, S.cash)) : nStep;
-  const cost = floorUpCost(i, count);
-  const can = S.cash >= cost && (nStep !== 'max' || floorMaxLevels(i, S.cash) > 0);
-  const up = el.querySelector('.btn-up');
-  up.classList.toggle('off', !can);
-  up.querySelector('b').textContent = money(cost);
-  up.querySelector('i').textContent = nStep === 'max' ? `MAX +${int(count)}` : `+${int(count)} ур.`;
-
-  const mgr = el.querySelector('.btn-mgr');
-  mgr.classList.toggle('hired', f.mgr);
-  mgr.textContent = f.mgr ? '✅' : '👔';
 }
 
-function prevMilestoneLvl(lvl) {
-  const ms = milestonesUpTo(lvl);
-  return ms.length ? ms[ms.length - 1].lvl : 0;
-}
+// ── Подсказки над падами ─────────────────────────────────────────────────────
 
-function renderUnitBar(kind) {
-  const el = kind === 'elev' ? elevEl : vaultEl;
-  if (!el) return;
-  const b = bank();
-  const u = kind === 'elev' ? b.elev : b.vault;
-  const st = kind === 'elev' ? elevStats() : vaultStats();
-  el.querySelector('.fbar-txt i').textContent = `ур. ${int(u.lvl)} · ${money(st.rate)}/с`;
+const tags = new Map();
 
-  const nm = nextMilestone(u.lvl);
-  const prev = prevMilestoneLvl(u.lvl);
-  el.querySelector('.ms-bar i').style.width = `${Math.max(0, Math.min(1, (u.lvl - prev) / (nm.lvl - prev))) * 100}%`;
-
-  const nStep = stepN();
-  const maxN = kind === 'elev' ? elevMaxLevels(S.cash) : vaultMaxLevels(S.cash);
-  const count = nStep === 'max' ? Math.max(1, maxN) : nStep;
-  const cost = kind === 'elev' ? elevUpCost(count) : vaultUpCost(count);
-  const can = S.cash >= cost && (nStep !== 'max' || maxN > 0);
-  const up = el.querySelector('.btn-up');
-  up.classList.toggle('off', !can);
-  up.querySelector('b').textContent = money(cost);
-  up.querySelector('i').textContent = nStep === 'max' ? `MAX +${int(count)}` : `+${int(count)} ур.`;
-
-  const mgr = el.querySelector('.btn-mgr');
-  mgr.classList.toggle('hired', u.mgr);
-  mgr.textContent = u.mgr ? '✅' : '👔';
-
-  // подсветка узкого места
-  const bn = bottleneck();
-  el.querySelector('.fbar-in').style.boxShadow =
-    (bn === kind) ? '0 0 0 2px #ec5b4a, 0 2px 0 rgba(0,0,0,.18)' : '0 2px 0 rgba(0,0,0,.18)';
-}
-
-// ── Улучшить всё ──────────────────────────────────────────────────────────────
-
-function upgradeAllPlan() {
-  const b = bank();
-  const items = [];
-  const nStep = stepN();
-  const n = nStep === 'max' ? 1 : nStep;
-  for (let i = 0; i < b.floors.length; i++) {
-    if (b.floors[i].lvl <= 0) continue;
-    items.push({ kind: 'floor', i, cost: floorUpCost(i, n) });
-  }
-  items.push({ kind: 'elev', cost: elevUpCost(n) });
-  items.push({ kind: 'vault', cost: vaultUpCost(n) });
-  items.sort((a, c) => a.cost - c.cost);
-  return items;
-}
-
-function doUpgradeAll() {
-  const nStep = stepN();
-  let bought = 0;
-  if (nStep === 'max') {
-    // покупаем по кругу, пока хватает денег
-    for (let pass = 0; pass < 60; pass++) {
-      let any = false;
-      const b = bank();
-      for (let i = 0; i < b.floors.length; i++) {
-        if (b.floors[i].lvl > 0 && S.cash >= floorUpCost(i, 1)) { upgradeFloor(i, 1); any = true; bought++; }
-      }
-      if (S.cash >= elevUpCost(1)) { upgradeElev(1); any = true; bought++; }
-      if (S.cash >= vaultUpCost(1)) { upgradeVault(1); any = true; bought++; }
-      if (!any) break;
+export function tickWorldTags() {
+  const list = pads();
+  const seen = new Set();
+  for (const p of list) {
+    seen.add(p.id);
+    let t = tags.get(p.id);
+    if (!t) {
+      t = document.createElement('div');
+      t.className = 'wtag' + (p.kind === 'up' ? '' : ' wtag--buy');
+      t.innerHTML = `<div class="wtag__sign">
+        <div class="wtag__t"></div>
+        <div class="wtag__p"><img src="./assets/ui/coin.png" alt=""><b></b></div>
+        <div class="wtag__bar"><i></i></div></div>`;
+      els.worldUI.appendChild(t);
+      tags.set(p.id, t);
     }
-  } else {
-    for (const it of upgradeAllPlan()) {
-      if (S.cash < it.cost) continue;
-      if (it.kind === 'floor') upgradeFloor(it.i, nStep);
-      else if (it.kind === 'elev') upgradeElev(nStep);
-      else upgradeVault(nStep);
-      bought++;
-    }
+    const paid = S.padPaid?.[p.id] || 0;
+    const left = Math.max(0, p.cost - paid);
+    const title = p.kind === 'up' ? `${p.title} · ур. ${(S.ups[p.up] || 0) + 1}` : p.title;
+    const tt = t.querySelector('.wtag__t');
+    if (tt.textContent !== title) tt.textContent = title;
+    const nb = t.querySelector('.wtag__p b');
+    const txt = fmt(left);
+    if (nb.textContent !== txt) nb.textContent = txt;
+    t.querySelector('.wtag__bar i').style.width = `${(paid / p.cost) * 100}%`;
+    t.classList.toggle('wtag--done', S.cash < left && paid === 0);
+
+    const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+    const near = dist(player.x, player.y, cx, cy) < 4.2;
+    t.classList.toggle('is-far', !near);
+    const s = scene.screenOf(cx, cy, 0.1);
+    t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
   }
-  if (bought) { haptic('medium'); toast(`Улучшено объектов: ${bought}`); }
-  else toast('Не хватает денег');
-  dirty = true;
-}
-
-function renderUpAll() {
-  const nStep = stepN();
-  if (nStep === 'max') {
-    els.upAllCost.textContent = 'MAX';
-    els.upAll.classList.toggle('off', S.cash < Math.min(...upgradeAllPlan().map((x) => x.cost)));
-    return;
+  // Две подсказки по ситуации: где обслуживать и куда нести выручку.
+  const c1 = COUNTERS[0];
+  if (S.stats.served < 3 && S.counters[c1.id].open && !S.counters[c1.id].clerk) {
+    const sp = clerkSpot(c1);
+    hint('serve', 'Встаньте сюда', sp.x, sp.y, seen);
   }
-  const plan = upgradeAllPlan();
-  let sum = 0, left = S.cash;
-  for (const it of plan) { if (left >= it.cost) { sum += it.cost; left -= it.cost; } }
-  els.upAllCost.textContent = sum > 0 ? money(sum) : money(plan[0]?.cost || 0);
-  els.upAll.classList.toggle('off', sum <= 0);
-}
+  if (S.carry > 0.5) hint('drop', 'Сдать выручку', VAULT.drop.x, VAULT.drop.y, seen);
 
-// ── HUD ───────────────────────────────────────────────────────────────────────
-
-function renderHud() {
-  const def = BANKS[S.bankIdx];
-  els.cash.textContent = money(S.cash);
-  els.gold.textContent = int(S.gold);
-  els.shares.textContent = int(S.shares);
-  els.income.textContent = money(incomePerSec()) + '/сек';
-  els.bankName.textContent = def.name;
-  els.bankCity.textContent = def.city;
-  els.bankFlag.textContent = def.flag;
-  els.lvlNum.textContent = S.level;
-  els.lvlFill.style.width = `${Math.min(100, (S.xp / xpForLevel(S.level)) * 100)}%`;
-
-  // Бусты
-  const strip = els.boostStrip;
-  const active = Object.entries(S.boosts).filter(([, b]) => b.until > Date.now());
-  if (active.length !== strip.children.length) strip.innerHTML = '';
-  active.forEach(([id], k) => {
-    let c = strip.children[k];
-    if (!c) { c = document.createElement('div'); c.className = 'bchip'; strip.appendChild(c); }
-    c.innerHTML = `<span>${BOOSTS[id]?.icon || '⚡'}</span>${clock(boostLeft(id))}`;
-  });
-  if (!active.length) strip.innerHTML = '';
-
-  // Значки
-  const bc = badgeCounts();
-  setBadge('tasks', bc.tasks);
-  setBadge('chests', bc.presents);
-  setBadge('staff', 0);
-  $('#btnRenov').classList.toggle('fx-pop', canRenovate());
-  const dot = $('#btnBoost .dot');
-  dot.hidden = !Object.values(S.freeBoost || {}).some((t) => t <= Date.now())
-    && Object.keys(S.freeBoost || {}).length >= 3;
-  dot.hidden = !hasFreeBoost();
-}
-
-function hasFreeBoost() {
-  for (const id of Object.keys(BOOSTS)) if ((S.freeBoost[id] || 0) <= Date.now()) return true;
-  return false;
-}
-
-function setBadge(tab, n) {
-  const b = $(`.nav-btn[data-tab="${tab}"] .badge`);
-  if (!b) return;
-  b.hidden = !n;
-  b.textContent = n > 9 ? '9+' : n;
-}
-
-// ── Главный цикл отрисовки UI ─────────────────────────────────────────────────
-
-let acc = 0;
-export function tickUI(dt) {
-  syncFloorEls();
-  positionBars();
-  acc += dt;
-  if (acc > 0.12 || dirty) {
-    acc = 0; dirty = false;
-    renderHud();
-    for (const i of floorEls.keys()) renderFloorBar(i);
-    renderUnitBar('elev');
-    renderUnitBar('vault');
-    renderUpAll();
+  for (const [id, el] of tags) {
+    if (!seen.has(id)) { el.remove(); tags.delete(id); }
   }
 }
 
-// ── Модалки ───────────────────────────────────────────────────────────────────
-
-let modalStack = [];
-
-export function openModal({ title, sub, body, tabs, onClose, wide }) {
-  closeModal(true);
-  const scrim = document.createElement('div');
-  scrim.className = 'scrim';
-  const sheet = document.createElement('div');
-  sheet.className = 'sheet';
-  sheet.innerHTML = `
-    <div class="sheet-head">
-      <div class="grow"><h2>${title}</h2>${sub ? `<div class="sub">${sub}</div>` : ''}</div>
-      <button class="x">✕</button>
-    </div>
-    ${tabs ? '<div class="tabs"></div>' : ''}
-    <div class="sheet-body"></div>`;
-  const bodyEl = sheet.querySelector('.sheet-body');
-  if (typeof body === 'string') bodyEl.innerHTML = body;
-  else if (body) bodyEl.appendChild(body);
-
-  if (tabs) {
-    const tb = sheet.querySelector('.tabs');
-    tabs.forEach((t, k) => {
-      const b = document.createElement('button');
-      b.textContent = t.label;
-      b.className = k === 0 ? 'on' : '';
-      b.addEventListener('click', () => {
-        $$('button', tb).forEach((x) => x.classList.remove('on'));
-        b.classList.add('on');
-        bodyEl.innerHTML = '';
-        const c = t.render();
-        if (typeof c === 'string') bodyEl.innerHTML = c;
-        else bodyEl.appendChild(c);
-        bodyEl.scrollTop = 0;
-      });
-      tb.appendChild(b);
-    });
-    bodyEl.innerHTML = '';
-    const c = tabs[0].render();
-    if (typeof c === 'string') bodyEl.innerHTML = c;
-    else bodyEl.appendChild(c);
+function hint(id, text, x, y, seen) {
+  seen.add(id);
+  let t = tags.get(id);
+  if (!t) {
+    t = document.createElement('div');
+    t.className = 'wtag wtag--hint';
+    t.innerHTML = '<div class="wtag__sign"><div class="wtag__t"></div></div>';
+    els.worldUI.appendChild(t);
+    tags.set(id, t);
   }
-
-  scrim.addEventListener('click', () => closeModal());
-  sheet.querySelector('.x').addEventListener('click', () => closeModal());
-  els.modalRoot.appendChild(scrim);
-  els.modalRoot.appendChild(sheet);
-  modalStack = [{ scrim, sheet, onClose }];
-  return { sheet, body: bodyEl, refresh: (html) => { bodyEl.innerHTML = html; } };
+  const tt = t.querySelector('.wtag__t');
+  if (tt.textContent !== text) tt.textContent = text;
+  const s = scene.screenOf(x, y, 0.1);
+  t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
 }
 
-export function closeModal(silent = false) {
-  for (const m of modalStack) {
-    m.scrim.remove(); m.sheet.remove();
-    if (!silent && m.onClose) m.onClose();
-  }
-  modalStack = [];
-  if (!silent) resetNav();
-}
+export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
 
-export function isModalOpen() { return modalStack.length > 0; }
+// ── Тосты ────────────────────────────────────────────────────────────────────
 
-// ── Тосты ─────────────────────────────────────────────────────────────────────
-
-export function toast(text, ms = 1900) {
+export function toast(text, ms = 1800) {
   const t = document.createElement('div');
   t.className = 'toast';
-  t.innerHTML = text;
+  t.textContent = text;
   els.toasts.appendChild(t);
   setTimeout(() => { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 320); }, ms);
 }
 
-export function fxTap(el) {
-  if (!el || !S.settings.showFx) return;
-  el.classList.remove('fx-pop');
-  void el.offsetWidth;
-  el.classList.add('fx-pop');
-}
-
-export function haptic(style = 'light') {
+export function haptic(kind = 'light') {
   if (!S.settings.haptics) return;
   const tg = window.Telegram?.WebApp;
   try {
-    if (style === 'success' || style === 'error' || style === 'warning') tg?.HapticFeedback?.notificationOccurred(style);
-    else tg?.HapticFeedback?.impactOccurred(style);
+    if (['success', 'error', 'warning'].includes(kind)) tg?.HapticFeedback?.notificationOccurred(kind);
+    else tg?.HapticFeedback?.impactOccurred(kind);
   } catch { /* вне телеграма */ }
-  if (!tg && navigator.vibrate) navigator.vibrate(style === 'medium' ? 18 : 8);
 }
 
-// ── Туториал ──────────────────────────────────────────────────────────────────
-
-export function renderTutorial() {
-  const step = TUTORIAL[S.tut];
-  if (!step) { els.tutorial.hidden = true; return; }
-  els.tutorial.hidden = false;
-  els.tutText.textContent = step.text;
+export function setBadge(tab, n) {
+  const b = $(`.nav-btn[data-tab="${tab}"] .badge`);
+  if (!b) return;
+  b.hidden = !n;
+  b.textContent = n > 9 ? '9+' : String(n);
 }
 
-function nextTutorial() {
-  S.tut++;
-  save();
-  renderTutorial();
+export function hudInsets() {
+  const d = du();
+  return { top: 56 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0),
+           bottom: 76 * d + (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0) };
 }
-
-export function skipTutorial() { S.tut = TUTORIAL.length; save(); renderTutorial(); }

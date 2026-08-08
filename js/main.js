@@ -1,158 +1,192 @@
-// Точка входа: загрузка сейва, игровой цикл, склейка модулей.
+// Точка входа: загрузка, постройка зала, игровой цикл.
 
-import { TICK_MS, SAVE_EVERY_MS, TUTORIAL } from './balance.js';
-import { S, hydrate, loadLocal, save, rollDaily, onChange, bank } from './state.js';
-import * as engine from './engine.js';
+import { COUNTERS, ATMS, SAVE_EVERY } from './balance.js';
+import { S, bootState, loadLocal, save, rollDaily, onChange } from './state.js';
 import * as scene from './scene.js';
+import * as actors from './actors.js';
+import * as game from './game.js';
 import * as ui from './ui.js';
-import { screens } from './screens.js';
-import { initTG, loadCloud, isTG } from './tg.js';
-import { refreshDaily } from './meta.js';
-import { money } from './fmt.js';
+import * as screens from './screens.js';
+import { initTG, loadCloud, isTG, pay } from './tg.js';
+import { fmt } from './core.js';
 
-window.__screens = screens;
-// Отладочный доступ (используется tools/shot.mjs и ручной проверкой в консоли)
-window.__game = { S, engine, scene, ui, screens };
+const views = { counters: new Map(), atms: new Map(), piles: new Map(), pads: new Map() };
+let vaultView = null;
+
+window.__openTab = (tab) => {
+  if (tab === 'bank') { screens.close(); ui.setNav('bank'); return; }
+  if (screens.isOpen()) screens.close(true);
+  if (tab === 'tasks') screens.tasks();
+  else if (tab === 'staff') screens.staff();
+  else if (tab === 'safes') screens.safes();
+  else if (tab === 'shop') screens.shop();
+};
+
+window.__pay = async (item) => {
+  const r = await pay(item, (it) => {
+    S.gold += it.give?.gold || 0;
+    save(true); ui.toast('Покупка зачислена'); screens.refresh();
+  });
+  if (!r.ok) ui.toast(r.why);
+};
 
 async function boot() {
-  try { initTG(); } catch (e) { console.warn('TG init', e); }
+  const bar = document.getElementById('bootBar');
+  const prog = (k) => { bar.style.width = `${Math.round(k * 100)}%`; };
 
-  // Локальный сейв приоритетнее, если он свежее облачного.
+  try { initTG(); } catch (e) { console.warn(e); }
+
   const local = loadLocal();
   let raw = local;
   if (isTG()) {
     const cloud = await loadCloud().catch(() => null);
     if (cloud && (!local || (cloud.lastSeen || 0) > (local.lastSeen || 0) + 5000)) raw = cloud;
   }
-  hydrate(raw);
+  bootState(raw);
   rollDaily();
+  if (!S.padPaid) S.padPaid = {};
 
-  await scene.loadAssets();
-  scene.initScene(document.getElementById('cv'));
+  await scene.initScene(document.getElementById('stage'), prog);
   ui.initUI();
+  buildWorld();
+  actors.refreshSolids();
+  actors.initPlayer();
+  actors.syncStaff();
+  onChange(onEvent);
 
-  // Стартуем у хранилища — как в оригинале, вид снизу здания.
-  scene.cam.y = 0; scene.cam.target = 0;
-  scene.clampCam();
-
-  scene.onTap(onSceneTap);
-  onChange(onGameEvent);
-
-  // Оффлайн-доход
+  // оффлайн
   const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
-  if (away > 60 && raw) {
-    const p = engine.computeOffline(away);
-    if (p) { S.offlinePending = p; setTimeout(() => screens.offline(p), 500); }
+  if (raw && away > 60) {
+    const p = game.computeOffline(away);
+    if (p) setTimeout(() => screens.offline(p, () => {
+      S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`);
+    }), 400);
   }
   S.lastSeen = Date.now();
 
-  document.getElementById('boot').classList.add('hide');
-  setTimeout(() => document.getElementById('boot').remove(), 500);
+  prog(1);
+  const b = document.getElementById('boot');
+  b.classList.add('hide');
+  setTimeout(() => b.remove(), 450);
 
   requestAnimationFrame(loop);
-  setInterval(() => save(), SAVE_EVERY_MS);
-  setInterval(dayWatch, 30000);
+  setInterval(() => save(), SAVE_EVERY);
+  setInterval(() => screens.updateBadges(), 1000);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) save(true);
-    else onReturn();
+    if (document.hidden) save(true); else onReturn();
   });
   window.addEventListener('pagehide', () => save(true));
-}
-
-let lastDay = new Date().getDate();
-function dayWatch() {
-  const d = new Date().getDate();
-  if (d !== lastDay) { lastDay = d; refreshDaily(); ui.markDirty(); }
 }
 
 function onReturn() {
   const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
   S.lastSeen = Date.now();
   if (away < 120) return;
-  const p = engine.computeOffline(away);
-  if (p) { S.offlinePending = p; screens.offline(p); }
+  const p = game.computeOffline(away);
+  if (p) screens.offline(p, () => { S.cash += p.amount; save(); ui.toast(`+${fmt(p.amount)}`); });
 }
 
-// ── Реакция на тапы по сцене ──────────────────────────────────────────────────
+// ── Постройка зала ───────────────────────────────────────────────────────────
 
-function onSceneTap(ev) {
-  if (ev.kind === 'locked') {
-    ui.toast('Отдел ещё закрыт — откройте его кнопкой ниже');
-    return;
+function buildWorld() {
+  vaultView = scene.buildVault();
+  rebuildObjects();
+}
+
+function rebuildObjects() {
+  for (const c of COUNTERS) {
+    const open = S.counters[c.id].open;
+    const cur = views.counters.get(c.id);
+    if (cur && cur.__open === open) continue;
+    if (cur) scene.removeView(cur);
+    const v = scene.buildCounter(c, open);
+    v.__open = open;
+    views.counters.set(c.id, v);
+    if (!views.piles.has(c.id)) views.piles.set(c.id, scene.buildCashPile());
   }
-  ui.haptic('light');
-  if (ev.kind === 'floor') {
-    const st = engine.floorStats(ev.i);
-    const y = scene.floorBarTop(ev.i) - 12;
-    scene.floatText(scene.viewW() * 0.62, y, '+' + money(st.capacity * engine.bonuses().tapValue * 0.25));
+  for (const a of ATMS) {
+    const open = S.atms[a.id].open;
+    const cur = views.atms.get(a.id);
+    if (cur && cur.__open === open) continue;
+    if (cur) scene.removeView(cur);
+    const v = scene.buildAtm(a, open);
+    v.__open = open;
+    views.atms.set(a.id, v);
+    if (!views.piles.has(a.id)) views.piles.set(a.id, scene.buildCashPile());
   }
-  // Прогресс туториала по действию
-  const step = TUTORIAL[S.tut];
-  if (step) {
-    if ((step.target === 'floor0' && ev.kind === 'floor')
-      || (step.target === 'elevator' && ev.kind === 'elev')
-      || (step.target === 'vault' && ev.kind === 'vault')) {
-      S.tut++; ui.renderTutorial(); save();
-    }
+  syncPads();
+  scene.sortItems();
+}
+
+function syncPads() {
+  const list = game.pads();
+  const seen = new Set();
+  for (const p of list) {
+    seen.add(p.id);
+    if (views.pads.has(p.id)) continue;
+    views.pads.set(p.id, scene.buildPad(p.x, p.y, p.w, p.h, p.color));
+  }
+  for (const [id, v] of views.pads) {
+    if (!seen.has(id)) { scene.removeView(v); views.pads.delete(id); }
   }
 }
 
-function onGameEvent(what) {
-  // Уровень поднимается часто и пачками — показываем тост, а не окно.
-  if (what === 'levelup') { ui.toast(`Уровень ${S.level}! Награда зачислена`); ui.haptic('success'); }
-  if (what === 'upgrade' || what === 'unlock' || what === 'manager') {
-    const step = TUTORIAL[S.tut];
-    if (step && ((step.target?.startsWith('upgrade') && what === 'upgrade')
-      || (step.target?.startsWith('manager') && what === 'manager')
-      || (step.target?.startsWith('unlock') && what === 'unlock'))) {
-      S.tut++; ui.renderTutorial(); save();
-    }
-  }
-  if (what === 'upgrade' || what === 'unlock' || what === 'bank' || what === 'renovate') {
-    engine.invalidateBonuses();
-    scene.clampCam();
-  }
-  if (['board', 'sm', 'boost'].includes(what)) engine.invalidateBonuses();
-  screens.refreshOpen();
+function onEvent(what) {
+  if (what === 'build') { rebuildObjects(); }
+  if (what === 'upgrade') syncPads();
+  if (what === 'levelup') { ui.toast(`Уровень ${S.level}`); ui.haptic('success'); }
+  if (screens.isOpen()) screens.refresh();
 }
 
-// ── Игровой цикл ──────────────────────────────────────────────────────────────
+// ── Цикл ─────────────────────────────────────────────────────────────────────
 
 let last = performance.now();
-let acc = 0;
 
 function loop(now) {
-  const dt = Math.min(0.25, (now - last) / 1000);
+  const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
-  // Симуляция фиксированным шагом — чтобы результат не зависел от FPS
-  acc += dt;
-  const stepS = TICK_MS / 1000;
-  let guard = 0;
-  while (acc >= stepS && guard++ < 12) {
-    for (let bi = 0; bi < S.banks.length; bi++) {
-      if (!S.banks[bi].open) continue;
-      // Чужие банки считаем упрощённо: только если там есть менеджеры
-      if (bi === S.bankIdx) engine.step(stepS, bi);
-      else stepIdleBank(stepS, bi);
-    }
-    acc -= stepS;
+  actors.movePlayer(ui.joy.dx, ui.joy.dy, dt);
+  actors.tickCustomers(dt, game.onServed);
+  actors.tickClerks(dt);
+  actors.tickRunner(dt, game.takeFromSource, game.deposit);
+  game.tick(dt, ui);
+
+  // стопки наличных на объектах
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    const pile = views.piles.get(c.id);
+    if (!pile) continue;
+    if (!st.open) { pile.visible = false; continue; }
+    const t = actors.trayPos(c);
+    scene.drawCashPile(pile, t.x, t.y, 0.96, st.cash / game.trayCap(c));
+  }
+  for (const a of ATMS) {
+    const st = S.atms[a.id];
+    const pile = views.piles.get(a.id);
+    if (!pile) continue;
+    if (!st.open) { pile.visible = false; continue; }
+    const t = actors.atmTray(a);
+    scene.drawCashPile(pile, t.x, t.y, 0.1, st.cash / game.atmCap(a));
   }
 
-  scene.draw(dt);
-  ui.tickUI(dt);
-  requestAnimationFrame(loop);
-}
+  scene.pulsePads([...views.pads.values()], dt);
+  scene.tickFx(dt);
+  const ins = ui.hudInsets();
+  scene.follow(actors.player.x, actors.player.y, ins.top, ins.bottom);
+  scene.sortItems();
+  ui.tickHud(dt);
+  ui.tickWorldTags();
 
-/** Банк, в котором игрок не находится: считаем доход по пропускной способности. */
-function stepIdleBank(dt, bi) {
-  const inc = engine.incomePerSec(bi, true);
-  if (inc > 0) engine.addCash(inc * dt);
+  requestAnimationFrame(loop);
 }
 
 boot().catch((e) => {
   console.error(e);
   const b = document.getElementById('boot');
-  if (b) b.innerHTML = `<div class="boot-in"><div class="boot-logo">⚠️</div>
-    <b>Не удалось запустить</b><div style="font-size:12px;opacity:.7;margin-top:8px;max-width:280px">${e.message}</div></div>`;
+  if (b) b.querySelector('.boot-in').innerHTML =
+    `<b>Не удалось запустить</b><div style="color:#F3E0BC;font-size:calc(12 * var(--du));margin-top:calc(10 * var(--du))">${e.message}</div>`;
 });
+
+// отладочный доступ для тестов
+window.__game = { S, game, actors, scene, ui, screens };

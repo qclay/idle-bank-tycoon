@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2 });
+p.on('console', m => console.log('[console]', m.type(), m.text()));
+p.on('pageerror', e => console.log('[pageerror]', e.message));
+p.on('requestfailed', r => console.log('[404]', r.url()));
+await p.goto('http://localhost:8199/index.html');
+await p.waitForTimeout(5000);
+console.log('__game:', await p.evaluate(() => typeof window.__game));
+console.log('boot виден:', await p.evaluate(() => !!document.getElementById('boot')));
+await p.screenshot({ path: '/private/tmp/claude-501/-Users-falins-projects-idle/40be8d34-0637-4942-bd3c-ecee4e2147b2/scratchpad/v2/dbg.png' });
+await b.close();

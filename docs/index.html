@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0c1b2a">
+<title>Idle Bank Tycoon</title>
+<link rel="stylesheet" href="./css/ui.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <div id="stage"></div>
+  <div id="worldUI"></div>
+
+  <header id="hud">
+    <div class="hud-row">
+      <div class="pill pill--cash">
+        <img class="pill__frame" src="./assets/pen/pill.png" alt="">
+        <img class="pill__ico" src="./assets/ui/hud_coin.png" alt="">
+        <div class="pill__n" id="cash">0</div>
+      </div>
+      <div class="lvl">
+        <div class="lvl__bar"><div class="lvl__fill" id="lvlFill"></div></div>
+        <img class="lvl__star" src="./assets/ui/lvlstar.png" alt="">
+        <div class="lvl__n" id="lvlN">1</div>
+      </div>
+      <button class="pill pill--gold" id="goldPill">
+        <img class="pill__frame" src="./assets/pen/pill.png" alt="">
+        <img class="pill__ico" src="./assets/ui/hud_star.png" alt="">
+        <div class="pill__n" id="gold">0</div>
+      </button>
+    </div>
+  </header>
+
+  <div id="carry" hidden>
+    <img src="./assets/ui/coin.png" alt="">
+    <div class="cbar"><i id="carryFill"></i></div>
+    <div class="ctxt" id="carryTxt">0</div>
+  </div>
+
+  <div id="joy"><div id="joyBase"></div><div id="joyKnob"></div></div>
+
+  <nav id="nav">
+    <div class="nav-in">
+      <button class="nav-btn is-on" data-tab="bank"><img src="./assets/ui/tab_game.png" alt=""><span>Банк</span></button>
+      <button class="nav-btn" data-tab="tasks"><img src="./assets/ui/tab_tasks.png" alt=""><span>Задания</span><i class="badge" hidden></i></button>
+      <button class="nav-btn" data-tab="staff"><img src="./assets/ui/tab_friends.png" alt=""><span>Персонал</span><i class="badge" hidden></i></button>
+      <button class="nav-btn" data-tab="safes"><img src="./assets/ui/tab_presents.png" alt=""><span>Сейфы</span><i class="badge" hidden></i></button>
+      <button class="nav-btn" data-tab="shop"><img src="./assets/ui/tab_shop.png" alt=""><span>Магазин</span></button>
+    </div>
+  </nav>
+
+  <div id="winRoot"></div>
+  <div id="toasts"></div>
+</div>
+
+<div id="boot">
+  <div class="boot-in">
+    <img src="./assets/ui/tab_leaders.png" alt="">
+    <b>Idle Bank Tycoon</b>
+    <div class="boot-bar"><i id="bootBar"></i></div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,598 +1,558 @@
-// Отрисовка банка: вертикальный разрез здания, ходящие клерки, лифт, хранилище.
-// Один canvas на весь экран, вертикальный скролл, поверх — DOM-панели этажей (ui.js).
+// Изометрическая сцена банка на PixiJS.
+// Арт собирается из изометрических примитивов (как в iso.js фермы): у коробки
+// три грани — верх светлее, левая средняя, правая тёмная, всё с тёмным контуром.
 
-import { FLOOR_DEFS, FLOOR_COUNT, BANKS } from './balance.js';
-import { S, bank } from './state.js';
-import {
-  floorStats, elevStats, vaultStats, lastOpenIndex, openFloors,
-  tapFloor, tapElev, tapVault, bonuses,
-} from './engine.js';
+// spine-pixi должен импортироваться ДО создания рендерера, иначе его render-pipe
+// не регистрируется и Spine на сцене падает с validateRenderable.
+import { Spine } from '@esotericsoftware/spine-pixi-v8';
+import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 
-export const LAYOUT = {
-  floorH: 150,      // высота ряда этажа
-  roomH: 104,       // из них — комната
-  barH: 46,         // из них — панель управления
-  vaultH: 200,      // высота блока хранилища снизу
-  barsH: 92,        // из них — две DOM-панели (лифт и хранилище) в самом низу
-  roofH: 150,       // крыша + небо сверху
-  shaftW: 58,       // ширина шахты лифта слева
-  pad: 6,
-};
+import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
+import { HALL, VAULT, COUNTERS, ATMS, UPGRADES } from './balance.js';
 
-const A = {};       // загруженные картинки
-let tinted = {};    // подкрашенные варианты клерков
-let ready = false;
+export const INK = 0x3f2b18;
 
-const CHAR_DIRS = ['se', 'sw', 'ne', 'nw'];
-const CLERK_TINTS = ['#ffffff', '#bfe0ff', '#ffe0c2', '#d9ffd2', '#f0d5ff'];
+let app = null;
+export let world = null;      // контейнер мира (двигается камерой)
+let ground = null;            // статичный пол и стены
+let items = null;             // объекты и актёры, сортируются по глубине
+let fx = null;                // эффекты поверх
+export const cam = { x: 0, y: 0, scale: 1 };
+const tex = {};
 
-export function loadAssets() {
-  const list = [];
-  const add = (key, src) => {
-    const img = new Image();
-    img.src = src;
-    A[key] = img;
-    list.push(new Promise((res) => { img.onload = res; img.onerror = res; }));
-  };
-  for (const d of CHAR_DIRS) for (let f = 0; f < 4; f++) add(`${d}${f}`, `assets/char/${d}_${f}.png`);
-  add('coin', 'assets/ui/coin.png');
-  add('star', 'assets/ui/hud_star.png');
-  return Promise.all(list).then(() => { buildTints(); ready = true; });
+export function getApp() { return app; }
+
+// ── Примитивы ────────────────────────────────────────────────────────────────
+
+function poly(g, pts, color, alpha = 1) {
+  g.poly(pts.flatMap((p) => [p.x, p.y])).fill({ color, alpha });
 }
 
-function buildTints() {
-  tinted = {};
-  for (const d of CHAR_DIRS) {
-    for (let f = 0; f < 4; f++) {
-      const img = A[`${d}${f}`];
-      if (!img || !img.width) continue;
-      tinted[`${d}${f}`] = CLERK_TINTS.map((c) => {
-        const cv = document.createElement('canvas');
-        cv.width = img.width; cv.height = img.height;
-        const g = cv.getContext('2d');
-        g.drawImage(img, 0, 0);
-        if (c !== '#ffffff') {
-          g.globalCompositeOperation = 'source-atop';
-          g.globalAlpha = 0.42;
-          g.fillStyle = c;
-          g.fillRect(0, 0, cv.width, cv.height);
-        }
-        return cv;
-      });
+function outline(g, pts, w = 2, color = INK, alpha = 1) {
+  g.poly(pts.flatMap((p) => [p.x, p.y])).stroke({ width: w, color, alpha, join: 'round' });
+}
+
+/** Изометрическая коробка: основной кирпич всего арта. */
+export function isoBox(g, x0, y0, x1, y1, z0, h, base, o = {}) {
+  const z1 = z0 + h;
+  const T = [px(x0, y0, z1), px(x1, y0, z1), px(x1, y1, z1), px(x0, y1, z1)];
+  const L = [px(x0, y1, z1), px(x1, y1, z1), px(x1, y1, z0), px(x0, y1, z0)];
+  const R = [px(x1, y0, z1), px(x1, y1, z1), px(x1, y1, z0), px(x1, y0, z0)];
+  const ow = o.ow ?? 2;
+  const top = o.top ?? shade(base, 0.2);
+  const left = o.left ?? base;
+  const right = o.right ?? shade(base, -0.26);
+  if (h > 0.001) {
+    poly(g, L, left); poly(g, R, right);
+    if (ow) { outline(g, L, ow); outline(g, R, ow); }
+  }
+  if (o.noTop !== true) {
+    poly(g, T, top);
+    if (ow) outline(g, T, ow);
+    // мягкий блик по верхней грани
+    if (o.sheen !== false) poly(g, T, 0xffffff, 0.10);
+  }
+  return g;
+}
+
+/** Плоский ромб на полу. */
+export function isoRhomb(g, x0, y0, x1, y1, z, color, o = {}) {
+  const P = [px(x0, y0, z), px(x1, y0, z), px(x1, y1, z), px(x0, y1, z)];
+  poly(g, P, color, o.alpha ?? 1);
+  if (o.ow) outline(g, P, o.ow, o.oc ?? INK, o.oa ?? 1);
+  return g;
+}
+
+/** Изометрический «цилиндр» — колонна, вазон, тумба. */
+function isoCyl(g, cx, cy, r, z0, h, base) {
+  const steps = 18;
+  const ring = (z) => {
+    const pts = [];
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      pts.push(px(cx + Math.cos(a) * r, cy + Math.sin(a) * r, z));
+    }
+    return pts;
+  };
+  const bot = ring(z0), top = ring(z0 + h);
+  // боковая поверхность
+  const side = [...top, ...bot.slice().reverse()];
+  poly(g, side, base);
+  outline(g, side, 2);
+  poly(g, top, shade(base, 0.22));
+  outline(g, top, 2);
+}
+
+// ── Запуск ───────────────────────────────────────────────────────────────────
+
+export async function initScene(host, onProgress = () => {}) {
+  app = new Application();
+  await app.init({
+    background: 0x101f31,
+    antialias: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
+    resizeTo: host,
+    preference: 'webgl',
+  });
+  host.appendChild(app.canvas);
+
+  onProgress(0.15);
+  await loadTextures(onProgress);
+
+  const back = new Graphics();
+  app.stage.addChild(back);
+  drawBackdrop(back);
+  app.renderer.on('resize', () => drawBackdrop(back));
+
+  world = new Container();
+  ground = new Container();
+  items = new Container();
+  items.sortableChildren = true;
+  fx = new Container();
+  world.addChild(ground, items, fx);
+  app.stage.addChild(world);
+
+  buildGround();
+  fitCamera();
+  window.addEventListener('resize', () => fitCamera(insets.top, insets.bottom));
+  onProgress(1);
+  return app;
+}
+
+async function loadTextures(onProgress) {
+  const list = {
+    coin: './assets/ui/coin.png',
+    coinS: './assets/ui/hud_coin.png',
+    star: './assets/ui/hud_star.png',
+    plant: './assets/nature/bush.png',
+  };
+  for (const d of ['se', 'sw', 'ne', 'nw']) {
+    for (let i = 0; i < 4; i++) list[`${d}${i}`] = `./assets/char/${d}_${i}.png`;
+  }
+  const keys = Object.keys(list);
+  let done = 0;
+  await Promise.all(keys.map(async (k) => {
+    try { tex[k] = await Assets.load(list[k]); } catch { tex[k] = Texture.EMPTY; }
+    done++; onProgress(0.15 + 0.55 * (done / keys.length));
+  }));
+
+  // Spine-утка — главный герой
+  try {
+    Assets.add({ alias: 'duck-skel', src: './assets/spine/duck/duck.json' });
+    Assets.add({ alias: 'duck-atlas', src: './assets/spine/duck/duck.atlas' });
+    await Assets.load(['duck-skel', 'duck-atlas']);
+    tex.duckReady = true;
+  } catch (e) {
+    console.warn('Spine-утка не загрузилась', e);
+    tex.duckReady = false;
+  }
+  onProgress(0.85);
+}
+
+export function texture(k) { return tex[k]; }
+
+function drawBackdrop(g) {
+  const w = app.screen.width, h = app.screen.height;
+  g.clear();
+  g.rect(0, 0, w, h).fill(0x0f1e2f);
+  // мягкое пятно света по центру — зал не висит в пустоте
+  const steps = 7;
+  for (let i = steps; i > 0; i--) {
+    const k = i / steps;
+    g.ellipse(w / 2, h * 0.48, w * 0.95 * k, h * 0.62 * k)
+      .fill({ color: 0x1d3350, alpha: 0.16 });
+  }
+}
+
+// ── Пол, стены, декор ────────────────────────────────────────────────────────
+
+const FLOOR_A = 0xe8e2d4;
+const FLOOR_B = 0xdcd4c2;
+const CARPET = 0x9d5b52;
+const WALL = 0xf2ece0;
+const DECOR = [[0.6, 12.2], [17.3, 0.6], [17.3, 12.2], [0.6, 10.6]];
+
+function buildGround() {
+  const g = new Graphics();
+
+  // плитка
+  for (let y = 0; y < HALL.h; y++) {
+    for (let x = 0; x < HALL.w; x++) {
+      const c = (x + y) % 2 ? FLOOR_A : FLOOR_B;
+      isoRhomb(g, x, y, x + 1, y + 1, 0, c);
     }
   }
-}
+  // ковровая дорожка: от входа вдоль зала и к стойкам
+  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.002, CARPET, { alpha: 0.85 });
+  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.002, CARPET, { alpha: 0.85 });
+  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.003, 0, { alpha: 0, ow: 2, oc: 0x7d4038, oa: 0.45 });
+  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.003, 0, { alpha: 0, ow: 2, oc: 0x7d4038, oa: 0.45 });
 
-// ── Геометрия мира ────────────────────────────────────────────────────────────
-// Мировая ось Y направлена вверх, 0 — пол хранилища.
+  // контур пола
+  isoRhomb(g, 0, 0, HALL.w, HALL.h, 0.004, 0x000000, { alpha: 0, ow: 2.5, oc: 0x6b5a44, oa: 0.35 });
 
-export function visibleFloors() {
-  const last = lastOpenIndex();
-  return Math.min(FLOOR_COUNT, last + 2);   // открытые + одна следующая
-}
+  // задние стены: по y = 0 и по x = 0
+  isoBox(g, 0, -0.22, HALL.w, 0, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
+  isoBox(g, -0.22, 0, 0, HALL.h, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
+  // плинтус
+  isoBox(g, 0, -0.22, HALL.w, 0, 0, 0.14, 0x8d7a61);
+  isoBox(g, -0.22, 0, 0, HALL.h, 0, 0.14, 0x8d7a61);
 
-export function floorWorldY(i) { return LAYOUT.vaultH + i * LAYOUT.floorH; }
-export function worldHeight() { return LAYOUT.vaultH + visibleFloors() * LAYOUT.floorH + LAYOUT.roofH; }
-
-export const cam = { y: 0, target: 0, vel: 0 };
-
-let cv, ctx, W = 0, H = 0, dpr = 1;
-let bottomInset = 110;   // высота нижних панелей — низ здания не должен под них уезжать
-let t = 0;
-const floats = [];      // всплывающие «+$…»
-const puffs = [];
-
-export function initScene(canvas) {
-  cv = canvas;
-  ctx = cv.getContext('2d');
-  resize();
-  window.addEventListener('resize', resize);
-  bindInput();
-}
-
-export function resize() {
-  dpr = Math.min(2.5, window.devicePixelRatio || 1);
-  W = cv.clientWidth; H = cv.clientHeight;
-  cv.width = Math.round(W * dpr);
-  cv.height = Math.round(H * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const nav = document.getElementById('nav');
-  const sb = document.getElementById('stepbar');
-  bottomInset = (nav?.offsetHeight || 64) + (sb?.offsetHeight || 46) - 6;
-  clampCam();
-}
-
-function viewport() { return Math.max(120, H - bottomInset); }
-
-export function clampCam() {
-  const max = Math.max(0, worldHeight() - viewport());
-  cam.y = Math.max(0, Math.min(max, cam.y));
-  cam.target = Math.max(0, Math.min(max, cam.target));
-}
-
-/** Экранная Y для мировой Y (низ здания стоит над нижними панелями). */
-function sy(worldY) { return H - bottomInset - (worldY - cam.y); }
-export const worldToScreen = sy;
-
-export function scrollToFloor(i, instant = false) {
-  const y = floorWorldY(i) - viewport() / 2 + LAYOUT.floorH / 2;
-  cam.target = y;
-  if (instant) cam.y = y;
-  clampCam();
-}
-
-// ── Ввод ──────────────────────────────────────────────────────────────────────
-
-let drag = null;
-const tapListeners = [];
-export function onTap(fn) { tapListeners.push(fn); }
-
-function bindInput() {
-  const pt = (e) => {
-    const r = cv.getBoundingClientRect();
-    const src = e.touches ? e.touches[0] : e;
-    return { x: src.clientX - r.left, y: src.clientY - r.top };
-  };
-
-  const down = (e) => {
-    if (e.target !== cv) return;
-    const p = pt(e);
-    drag = { x: p.x, y: p.y, sy: cam.y, moved: 0, t: performance.now(), last: p.y, vel: 0 };
-  };
-  const move = (e) => {
-    if (!drag) return;
-    const p = pt(e);
-    const dy = p.y - drag.y;
-    drag.moved = Math.max(drag.moved, Math.abs(dy) + Math.abs(p.x - drag.x));
-    cam.y = drag.sy + dy;          // тянем вниз — едем вверх по зданию
-    cam.target = cam.y;
-    const now = performance.now();
-    const dt = Math.max(1, now - drag.t);
-    drag.vel = (p.y - drag.last) / dt * 16;
-    drag.last = p.y; drag.t = now;
-    clampCam();
-    if (drag.moved > 8 && e.cancelable) e.preventDefault();
-  };
-  const up = () => {
-    if (!drag) return;
-    if (drag.moved < 8) hit(drag.x, drag.y);
-    else cam.vel = drag.vel;
-    drag = null;
-  };
-
-  cv.addEventListener('touchstart', down, { passive: true });
-  cv.addEventListener('touchmove', move, { passive: false });
-  cv.addEventListener('touchend', up);
-  cv.addEventListener('touchcancel', () => { drag = null; });
-  cv.addEventListener('mousedown', down);
-  window.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', up);
-  cv.addEventListener('wheel', (e) => {
-    cam.target -= e.deltaY; cam.y = cam.target; clampCam(); e.preventDefault();
-  }, { passive: false });
-}
-
-function hit(x, y) {
-  const wy = cam.y + (H - bottomInset - y);
-  // Хранилище
-  if (wy < LAYOUT.vaultH) {
-    tapVault();
-    pop(x, y, 'vault');
-    fire({ kind: 'vault' });
-    return;
+  // окна на дальней стене
+  for (let x = 3.4; x < HALL.w - 1.5; x += 3.4) {
+    isoBox(g, x, -0.24, x + 1.7, -0.2, 1.05, 1.15, 0x9fd6f2, { ow: 2 });
   }
-  const i = Math.floor((wy - LAYOUT.vaultH) / LAYOUT.floorH);
-  if (i < 0 || i >= visibleFloors()) return;
-  const local = (wy - LAYOUT.vaultH) % LAYOUT.floorH;
-  if (local < LAYOUT.barH) return;          // это зона DOM-панели, canvas не реагирует
-  if (x < LAYOUT.shaftW) { tapElev(); pop(x, y, 'elev'); fire({ kind: 'elev' }); return; }
-  const f = bank().floors[i];
-  if (f.lvl <= 0) { fire({ kind: 'locked', i }); return; }
-  tapFloor(i);
-  pop(x, y, 'floor');
-  fire({ kind: 'floor', i });
-}
-
-function fire(ev) { for (const fn of tapListeners) fn(ev); }
-
-function pop(x, y) {
-  if (!S.settings.showFx) return;
-  puffs.push({ x, y, t: 0, life: 0.45 });
-}
-
-export function floatText(worldX, worldY, text, color = '#ffe680') {
-  if (!S.settings.showFx) return;
-  floats.push({ x: worldX, y: worldY, text, color, t: 0, life: 1.1 });
-}
-
-// ── Рисование ─────────────────────────────────────────────────────────────────
-
-export function draw(dt) {
-  if (!ctx) return;
-  t += dt;
-
-  // инерция скролла
-  if (!drag && Math.abs(cam.vel) > 0.1) {
-    cam.y += cam.vel; cam.target = cam.y;
-    cam.vel *= 0.92;
-    clampCam();
-  } else if (!drag) {
-    cam.y += (cam.target - cam.y) * Math.min(1, dt * 8);
+  for (let y = 3.4; y < HALL.h - 1.5; y += 3.4) {
+    isoBox(g, -0.24, y, -0.2, y + 1.7, 1.05, 1.15, 0x9fd6f2, { ow: 2 });
   }
 
-  const def = BANKS[S.bankIdx];
-  ctx.clearRect(0, 0, W, H);
-  drawSky(def);
+  ground.addChild(g);
 
-  const nVis = visibleFloors();
-  const firstVisible = Math.max(0, Math.floor((cam.y - LAYOUT.vaultH) / LAYOUT.floorH) - 1);
-  const lastVisible = Math.min(nVis - 1, Math.ceil((cam.y + H - LAYOUT.vaultH) / LAYOUT.floorH));
+  // вазоны по углам зала
+  const dec = new Graphics();
+  for (const [x, y] of DECOR) {
+    isoCyl(dec, x, y, 0.32, 0, 0.42, 0xb9743f);
+  }
+  ground.addChild(dec);
+  for (const [x, y] of DECOR) {
+    const s = new Sprite(tex.plant);
+    s.anchor.set(0.5, 1);
+    const p = px(x, y, 0.42);
+    s.x = p.x; s.y = p.y;
+    s.scale.set(0.26);
+    ground.addChild(s);
+  }
 
-  drawBuildingShell(def, nVis);
-  for (let i = firstVisible; i <= lastVisible; i++) drawFloor(i, def, dt);
-  drawShaft(def, nVis);
-  if (sy(LAYOUT.vaultH) > -20) drawVault(def, dt);
-  drawRoof(def, nVis);
-
-  drawFx(dt);
+  // входная зона
+  const dg = new Graphics();
+  isoRhomb(dg, 15.1, 11.5, 17.4, 12.96, 0.006, 0x6f8fb5, { alpha: 0.45, ow: 2, oc: 0x44607f, oa: 0.6 });
+  ground.addChild(dg);
 }
 
-function drawSky(def) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, def.sky[0]);
-  g.addColorStop(1, def.sky[1]);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-  // силуэт города на фоне
-  const topY = sy(worldHeight() - LAYOUT.roofH);
-  ctx.save();
-  ctx.globalAlpha = 0.18;
-  ctx.fillStyle = '#0b2a49';
-  const base = Math.min(H, Math.max(0, topY + 120));
-  let x = -20;
-  let seed = 1337;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  while (x < W + 40) {
-    const w = 18 + rnd() * 34;
-    const h = 40 + rnd() * 150;
-    ctx.fillRect(x, base - h, w, h);
-    x += w + 6 + rnd() * 10;
+// ── Объекты зала ─────────────────────────────────────────────────────────────
+
+/** Хранилище — толстая дверь-сейф в дальнем углу. */
+export function buildVault() {
+  const c = new Container();
+  const g = new Graphics();
+  const { x, y, w, h } = VAULT;
+  isoBox(g, x, y, x + w, y + h, 0, 1.9, 0x51617a);
+  isoBox(g, x + 0.1, y + 0.1, x + w - 0.1, y + h - 0.1, 1.9, 0.12, 0x6a7c96);
+  // дверь на фронтальной грани
+  isoBox(g, x + 0.4, y + h, x + w - 0.4, y + h + 0.14, 0.25, 1.3, 0x8f9fb5);
+  c.addChild(g);
+
+  const wheel = new Graphics();
+  wheel.circle(0, 0, 15).fill(0xc9d5e6).stroke({ width: 3, color: INK });
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    wheel.moveTo(0, 0).lineTo(Math.cos(a) * 22, Math.sin(a) * 22 * 0.62)
+      .stroke({ width: 5, color: 0xc9d5e6 });
   }
-  ctx.restore();
+  wheel.circle(0, 0, 7).fill(0x8f9fb5);
+  const wp = px(x + w / 2, y + h + 0.14, 0.92);
+  wheel.x = wp.x; wheel.y = wp.y;
+  c.addChild(wheel);
+  c.zIndex = depth(x + w / 2, y + h);
+  c.__wheel = wheel;
+  items.addChild(c);
+  return c;
 }
 
-function shellX() { return { x0: LAYOUT.pad, x1: W - LAYOUT.pad }; }
-
-function drawBuildingShell(def, nVis) {
-  const { x0, x1 } = shellX();
-  const top = sy(LAYOUT.vaultH + nVis * LAYOUT.floorH);
-  const bot = sy(0);
-  ctx.fillStyle = '#e8eef5';
-  ctx.fillRect(x0, top, x1 - x0, bot - top);
-  ctx.fillStyle = 'rgba(0,0,0,0.06)';
-  ctx.fillRect(x0, top, 6, bot - top);
-  ctx.fillRect(x1 - 6, top, 6, bot - top);
+/** Стойка: тумба + столешница + стеклянный экран + лоток для налички. */
+export function buildCounter(def, opened) {
+  const c = new Container();
+  const g = new Graphics();
+  const x = def.x, y = def.y;
+  if (opened) {
+    isoBox(g, x, y, x + 2, y + 0.62, 0, 0.86, def.tone);
+    isoBox(g, x - 0.08, y - 0.08, x + 2.08, y + 0.7, 0.86, 0.1, shade(def.tone, 0.45));
+    // стеклянная перегородка: прозрачная, иначе прячет кассира
+    const gl = new Graphics();
+    isoBox(gl, x + 0.15, y - 0.02, x + 1.85, y + 0.02, 0.96, 0.62, 0xcfeeff, { ow: 1.4 });
+    gl.alpha = 0.55;
+    c.addChild(gl);
+    // табличка
+    isoBox(g, x + 0.6, y + 0.64, x + 1.4, y + 0.68, 0.96, 0.34, shade(def.tone, -0.1), { ow: 1.6 });
+  } else {
+    // место под будущую стойку: только контур на полу + бледный силуэт
+    isoBox(g, x, y, x + 2, y + 0.62, 0, 0.86, def.tone, { ow: 0, sheen: false });
+    c.__ghost = true;
+    isoRhomb(g, x, y, x + 2, y + 0.62, 0.012, 0, { alpha: 0, ow: 2, oc: 0xffffff, oa: 0.35 });
+  }
+  c.addChild(g);
+  if (c.__ghost) c.alpha = 0.16;
+  c.zIndex = depth(x + 1, y + 0.62);
+  items.addChild(c);
+  return c;
 }
 
-function drawFloor(i, def, dt) {
-  const wy = floorWorldY(i);
-  const yTop = sy(wy + LAYOUT.floorH);      // верх ряда на экране
-  const yBar = sy(wy + LAYOUT.barH);        // граница комнаты и панели
-  const yBot = sy(wy);
-  const { x0, x1 } = shellX();
-  const rx0 = LAYOUT.shaftW;
-  const f = bank().floors[i];
-  const fd = FLOOR_DEFS[i];
-  const locked = f.lvl <= 0;
-
-  // Пол/потолок
-  ctx.fillStyle = '#cfd8e2';
-  ctx.fillRect(x0, yBar - 4, x1 - x0, 4);
-
-  if (locked) {
-    ctx.fillStyle = 'rgba(30,40,55,0.55)';
-    ctx.fillRect(rx0, yTop, x1 - rx0, yBar - yTop);
-    // строительная штриховка
-    ctx.save();
-    ctx.beginPath(); ctx.rect(rx0, yTop, x1 - rx0, yBar - yTop); ctx.clip();
-    ctx.strokeStyle = 'rgba(255,205,60,0.22)';
-    ctx.lineWidth = 10;
-    for (let x = rx0 - 120; x < x1 + 120; x += 34) {
-      ctx.beginPath(); ctx.moveTo(x, yBar); ctx.lineTo(x + 90, yTop); ctx.stroke();
-    }
-    ctx.restore();
-    return;
+/** Банкомат. */
+export function buildAtm(def, opened) {
+  const c = new Container();
+  const g = new Graphics();
+  const x = def.x, y = def.y;
+  if (opened) {
+    isoBox(g, x, y, x + 0.72, y + 0.6, 0, 1.45, def.tone);
+    isoBox(g, x + 0.08, y + 0.6, x + 0.64, y + 0.64, 0.85, 0.45, 0x2e3d52, { ow: 1.6 });
+    isoBox(g, x + 0.12, y + 0.6, x + 0.6, y + 0.63, 0.92, 0.3, 0x63d2ff, { ow: 1.2 });
+  } else {
+    isoBox(g, x, y, x + 0.72, y + 0.6, 0, 1.45, def.tone, { ow: 0, sheen: false });
+    c.__ghost = true;
+    isoRhomb(g, x, y, x + 0.72, y + 0.6, 0.012, 0, { alpha: 0, ow: 2, oc: 0xffffff, oa: 0.35 });
   }
+  c.addChild(g);
+  if (c.__ghost) c.alpha = 0.16;
+  c.zIndex = depth(x + 0.36, y + 0.6);
+  items.addChild(c);
+  return c;
+}
 
-  // Стена комнаты
-  const grad = ctx.createLinearGradient(0, yTop, 0, yBar);
-  grad.addColorStop(0, `hsl(${fd.hue} 32% 88%)`);
-  grad.addColorStop(1, `hsl(${fd.hue} 26% 79%)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(rx0, yTop, x1 - rx0, yBar - yTop);
+/** Пад на полу: покупка объекта или апгрейд. */
+export function buildPad(x, y, w, h, color) {
+  const c = new Container();
+  const g = new Graphics();
+  isoRhomb(g, x, y, x + w, y + h, 0.008, color, { alpha: 0.42 });
+  isoRhomb(g, x + 0.1, y + 0.1, x + w - 0.1, y + h - 0.1, 0.009, shade(color, 0.35), { alpha: 0.5 });
+  isoRhomb(g, x, y, x + w, y + h, 0.01, 0, { alpha: 0, ow: 3, oc: shade(color, -0.25), oa: 0.9 });
+  // стрелка «встань сюда»
+  const cx = x + w / 2, cy = y + h / 2;
+  const a = px(cx, cy - 0.16, 0.012), b2 = px(cx - 0.2, cy + 0.06, 0.012), d = px(cx + 0.2, cy + 0.06, 0.012);
+  g.poly([a.x, a.y, b2.x, b2.y, d.x, d.y]).fill({ color: 0xffffff, alpha: 0.75 });
+  c.addChild(g);
+  c.zIndex = depth(x, y) - 500;      // пады всегда под актёрами
+  items.addChild(c);
+  c.__g = g;
+  c.__t = 0;
+  return c;
+}
 
-  // Окно на дальней стене
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillRect(x1 - 74, yTop + 14, 54, 30);
-  ctx.strokeStyle = 'rgba(60,80,105,0.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x1 - 74, yTop + 14, 54, 30);
-
-  const floorY = yBar - 6;                  // линия пола, по которой ходят
-  const st = floorStats(i);
-
-  // Стойка обслуживания справа, за ней — очередь клиентов
-  const deskW = 62;
-  const deskX = x1 - 118;
-  const qn = Math.min(2, 1 + (i % 2));
-  for (let c = 0; c < qn; c++) {
-    const bob = Math.sin(t * 2 + c * 1.7) * 1.5;
-    drawChar('sw', Math.floor((t * 2.4 + c) % 4), deskX + deskW + 16 + c * 20, floorY + bob, 44, 2 + (c % 3));
-  }
-  drawDesk(deskX, floorY, fd, deskW);
-
-  // Клерки: ходят от шахты к стойке и обратно
-  const active = f.mgr || f.run;
-  const lane = { a: rx0 + 16, b: deskX - 6 };
-  for (let w = 0; w < st.workers; w++) {
-    const ph = active ? ((f.prog + w / st.workers) % 1) : (w / st.workers) * 0.5;
-    let x, dir, carry;
-    if (ph < 0.5) { const u = ph / 0.5; x = lane.a + (lane.b - lane.a) * u; dir = 'se'; carry = false; }
-    else { const u = (ph - 0.5) / 0.5; x = lane.b + (lane.a - lane.b) * u; dir = 'sw'; carry = true; }
-    const frame = active ? Math.floor((t * 7 + w) % 4) : 0;
-    drawChar(dir, frame, x, floorY, 52, w % CLERK_TINTS.length);
-    if (carry) {
-      const cs = 13;
-      drawCoin(x + (dir === 'sw' ? -11 : 11), floorY - 30, cs);
-    }
-  }
-
-  // Стопка денег у шахты
-  const ratio = st.stackCap > 0 ? Math.min(1, f.stack / st.stackCap) : 0;
-  drawStack(rx0 + 4, floorY, ratio, f.stack);
-
-  // Подсветка «полно — нужен лифт»
-  if (ratio > 0.985) {
-    ctx.save();
-    ctx.globalAlpha = 0.35 + Math.sin(t * 5) * 0.2;
-    ctx.fillStyle = '#ff5f4a';
-    ctx.fillRect(rx0, yTop, 4, yBar - yTop);
-    ctx.restore();
+/** Лёгкая пульсация падов, чтобы взгляд их находил. */
+export function pulsePads(list, dt) {
+  for (const c of list) {
+    c.__t = (c.__t || 0) + dt;
+    c.alpha = 0.82 + Math.sin(c.__t * 3) * 0.18;
   }
 }
 
-function drawDesk(x, floorY, fd, w = 62) {
-  const h = 32;
-  ctx.fillStyle = `hsl(${fd.hue} 40% 42%)`;
-  ctx.fillRect(x, floorY - h, w, h);
-  ctx.fillStyle = `hsl(${fd.hue} 45% 55%)`;
-  ctx.fillRect(x, floorY - h, w, 7);
-  ctx.fillStyle = 'rgba(255,255,255,0.62)';
-  roundRect(x + 4, floorY - h - 30, w - 8, 25, 5); ctx.fill();
-  ctx.strokeStyle = 'rgba(40,60,80,0.3)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.font = '15px system-ui';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#20364d';
-  ctx.fillText(fd.icon, x + w / 2, floorY - h - 17);
+/** Стопка наличных на стойке. */
+export function buildCashPile() {
+  const c = new Container();
+  items.addChild(c);
+  return c;
 }
 
-function drawStack(x, floorY, ratio, amount) {
-  if (ratio <= 0.001) return;
-  const rows = Math.max(1, Math.round(ratio * 6));
+export function drawCashPile(cont, x, y, z, ratio) {
+  cont.removeChildren();
+  if (ratio <= 0.001) { cont.visible = false; return; }
+  cont.visible = true;
+  const rows = clamp(Math.ceil(ratio * 4), 1, 4);
   for (let r = 0; r < rows; r++) {
-    const cols = r < rows - 1 ? 3 : 1 + Math.floor(ratio * 2) % 3;
-    for (let c = 0; c < cols; c++) {
-      drawCoin(x + 8 + c * 11, floorY - 6 - r * 8, 15);
+    const n = r === rows - 1 ? clamp(Math.round(ratio * 3), 1, 3) : 3;
+    for (let i = 0; i < n; i++) {
+      const s = new Sprite(tex.coin);
+      s.anchor.set(0.5, 0.5);
+      const p = px(x + i * 0.16, y, z + r * 0.09);
+      s.x = p.x; s.y = p.y;
+      s.scale.set(0.22);
+      cont.addChild(s);
     }
   }
+  cont.zIndex = depth(x + 0.5, y + 0.5) + 1;
 }
 
-function drawCoin(x, y, size) {
-  const img = A.coin;
-  if (img && img.width) ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
-  else { ctx.fillStyle = '#f2c33c'; ctx.beginPath(); ctx.arc(x, y, size / 2, 0, 7); ctx.fill(); }
-}
+// ── Актёры ───────────────────────────────────────────────────────────────────
 
-function drawChar(dir, frame, x, footY, h, tint = 0) {
-  const key = `${dir}${frame}`;
-  const src = (tinted[key] && tinted[key][tint % CLERK_TINTS.length]) || A[key];
-  if (!src || !src.width) {
-    ctx.fillStyle = '#456'; ctx.fillRect(x - 7, footY - h, 14, h); return;
+/** Игрок: Spine-утка. Поворот — зеркалим по направлению движения. */
+export function makePlayerView() {
+  const c = new Container();
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0, 20, 10).fill({ color: 0x000000, alpha: 0.22 });
+  c.addChild(shadow);
+
+  let body = null;
+  if (tex.duckReady) {
+    try {
+      body = Spine.from({ skeleton: 'duck-skel', atlas: 'duck-atlas' });
+      const b = body.getBounds();
+      const want = 78;                        // высота героя на экране
+      const k = b.height > 0 ? want / b.height : 0.3;
+      body.scale.set(k);
+      if (body.skeleton.data.findAnimation('Idle')) body.state.setAnimation(0, 'Idle', true);
+      c.addChild(body);
+    } catch (e) { console.warn('Spine не создался', e); body = null; }
   }
-  const w = h * (src.width / src.height);
-  ctx.drawImage(src, x - w / 2, footY - h, w, h);
+  if (!body) {                                 // запасной вариант — покадровый спрайт
+    body = new Sprite(tex.se0);
+    body.anchor.set(0.5, 1);
+    body.scale.set(0.34);
+    c.addChild(body);
+  }
+  const load = new Container();
+  load.y = -84;
+  c.addChild(load);
+  c.__load = load;
+  c.__loadN = -1;
+  c.__body = body;
+  c.__isSpine = !!tex.duckReady;
+  c.__anim = '';
+  items.addChild(c);
+  return c;
 }
 
-function drawShaft(def, nVis) {
-  const top = sy(LAYOUT.vaultH + nVis * LAYOUT.floorH);
-  const bot = sy(0);
-  ctx.fillStyle = '#33455c';
-  ctx.fillRect(LAYOUT.pad, top, LAYOUT.shaftW - LAYOUT.pad, bot - top);
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  for (let y = top; y < bot; y += 22) ctx.fillRect(LAYOUT.pad, y, LAYOUT.shaftW - LAYOUT.pad, 2);
-  // тросы
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-  ctx.lineWidth = 2;
-  const cx = LAYOUT.pad + (LAYOUT.shaftW - LAYOUT.pad) / 2;
-  ctx.beginPath(); ctx.moveTo(cx - 12, top); ctx.lineTo(cx - 12, bot); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx + 12, top); ctx.lineTo(cx + 12, bot); ctx.stroke();
-
-  // кабина: pos = 0 — на уровне приёмки хранилища, pos = i+1 — у стойки i-го этажа
-  const e = bank().elev;
-  const est = elevStats();
-  const wy = LAYOUT.barsH + e.pos * LAYOUT.floorH;
-  const y = sy(wy);
-  const cw = LAYOUT.shaftW - LAYOUT.pad - 8, ch = 62;
-  const x = LAYOUT.pad + 4;
-  ctx.fillStyle = '#20304a';
-  ctx.fillRect(x - 2, y - ch - 2, cw + 4, ch + 4);
-  const g = ctx.createLinearGradient(x, y - ch, x, y);
-  g.addColorStop(0, '#6f8ab0'); g.addColorStop(1, '#42597a');
-  ctx.fillStyle = g;
-  ctx.fillRect(x, y - ch, cw, ch);
-  // груз
-  const load = est.capacity > 0 ? Math.min(1, e.load / est.capacity) : 0;
-  if (load > 0) {
-    const lh = Math.max(4, (ch - 12) * load);
-    ctx.fillStyle = '#f2c33c';
-    ctx.fillRect(x + 5, y - 5 - lh, cw - 10, lh);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(x + 5, y - 5 - lh, cw - 10, 3);
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 0.5, y - ch + 0.5, cw - 1, ch - 1);
-  // индикатор без менеджера
-  if (!e.mgr) {
-    ctx.save();
-    ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.3;
-    ctx.fillStyle = '#ffd54a';
-    ctx.beginPath(); ctx.arc(x + cw / 2, y - ch - 10, 5, 0, 7); ctx.fill();
-    ctx.restore();
+/** Стопка наличных над героем: видно, сколько он несёт. */
+export function setCarryStack(view, ratio) {
+  const n = ratio <= 0.001 ? 0 : clamp(Math.ceil(ratio * 5), 1, 5);
+  if (view.__loadN === n) return;
+  view.__loadN = n;
+  view.__load.removeChildren();
+  for (let i = 0; i < n; i++) {
+    const s = new Sprite(tex.coin);
+    s.anchor.set(0.5, 0.5);
+    s.scale.set(0.24);
+    s.x = (i % 2 ? 3 : -3);
+    s.y = -i * 7;
+    view.__load.addChild(s);
   }
 }
 
-function drawVault(def, dt) {
-  const { x1 } = shellX();
-  const x0 = LAYOUT.shaftW;            // шахта лифта идёт до самого низа, не перекрываем
-  const top = sy(LAYOUT.vaultH);
-  const bot = sy(LAYOUT.barsH);        // ниже — DOM-панели лифта и хранилища
-  const g = ctx.createLinearGradient(0, top, 0, bot);
-  g.addColorStop(0, '#39506e'); g.addColorStop(1, '#25374f');
-  ctx.fillStyle = g;
-  ctx.fillRect(x0, top, x1 - x0, bot - top);
+/** Клиент или сотрудник: изометрический спрайт человека на 4 направления. */
+export function makeCharView(tint = 0) {
+  const c = new Container();
+  const shadow = new Graphics();
+  shadow.ellipse(0, 0, 14, 7).fill({ color: 0x000000, alpha: 0.2 });
+  c.addChild(shadow);
+  const s = new Sprite(tex.se0);
+  s.anchor.set(0.5, 1);
+  s.scale.set(0.3);
+  if (tint) s.tint = tint;
+  c.addChild(s);
+  c.__spr = s;
+  items.addChild(c);
+  return c;
+}
 
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(x0, top, x1 - x0, 5);
+export function setCharFrame(view, dir, frame) {
+  const t = tex[`${dir}${frame}`];
+  if (t && view.__spr.texture !== t) view.__spr.texture = t;
+}
 
-  const v = bank().vault;
-  const vst = vaultStats();
-
-  ctx.font = '700 11px system-ui';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  const label = 'ХРАНИЛИЩЕ';
-  ctx.fillText(label, x0 + 10, top + 18);
-  const labelEnd = x0 + 10 + ctx.measureText(label).width;
-
-  // Дверь сейфа справа
-  const dh = 76, dw = 76;
-  const dx = x1 - dw - 14, dy = bot - dh - 12;
-  ctx.fillStyle = '#8a9bb2';
-  roundRect(dx, dy, dw, dh, 10); ctx.fill();
-  ctx.fillStyle = '#6d7f97';
-  roundRect(dx + 7, dy + 7, dw - 14, dh - 14, 8); ctx.fill();
-  ctx.save();
-  ctx.translate(dx + dw / 2, dy + dh / 2);
-  if ((v.mgr || v.run) && v.load > 0) ctx.rotate(t * 2.2);
-  ctx.strokeStyle = '#cdd8e6'; ctx.lineWidth = 5;
-  for (let k = 0; k < 4; k++) {
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(Math.cos(k * Math.PI / 2) * 22, Math.sin(k * Math.PI / 2) * 22);
-    ctx.stroke();
-  }
-  ctx.beginPath(); ctx.arc(0, 0, 9, 0, 7); ctx.fillStyle = '#cdd8e6'; ctx.fill();
-  ctx.restore();
-
-  // Приёмка: куча денег, которые лифт привёз
-  const ratio = vst.cap > 0 ? Math.min(1, v.load / vst.cap) : 0;
-  const px = x0 + 8;
-  const pw = dx - px - 12;
-  const py = bot - 58;
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(px, py, pw, 44, 8); ctx.fill();
-  if (ratio > 0) {
-    ctx.save();
-    ctx.beginPath(); roundRect(px + 3, py + 3, pw - 6, 38, 6); ctx.clip();
-    const cols = Math.max(1, Math.round(ratio * (pw / 15)));
-    for (let r = 0; r < 3; r++) for (let c = 0; c < cols; c++) {
-      drawCoin(px + 12 + c * 14, py + 36 - r * 11, 16);
-    }
-    ctx.restore();
-  }
-
-  // Полоса обработки
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  roundRect(px, bot - 10, pw, 6, 3); ctx.fill();
-  ctx.fillStyle = '#7ee08a';
-  roundRect(px, bot - 10, pw * Math.max(0, Math.min(1, v.prog)), 6, 3); ctx.fill();
-
-  if (!v.mgr) {
-    ctx.save();
-    ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.3;
-    ctx.fillStyle = '#ffd54a';
-    ctx.beginPath(); ctx.arc(labelEnd + 10, top + 14, 5, 0, 7); ctx.fill();
-    ctx.restore();
+export function setPlayerAnim(view, name) {
+  if (!view.__isSpine || view.__anim === name) return;
+  const b = view.__body;
+  if (b?.skeleton?.data?.findAnimation?.(name)) {
+    b.state.setAnimation(0, name, true);
+    view.__anim = name;
   }
 }
 
-function drawRoof(def, nVis) {
-  const { x0, x1 } = shellX();
-  const y = sy(LAYOUT.vaultH + nVis * LAYOUT.floorH);
-  if (y > H + 10) return;
-  ctx.fillStyle = '#c3cedb';
-  ctx.fillRect(x0 - 6, y - 16, x1 - x0 + 12, 16);
-  ctx.fillStyle = '#9fb0c4';
-  ctx.fillRect(x0 + 24, y - 46, 42, 30);
-  ctx.fillStyle = '#7f93ab';
-  ctx.fillRect(x1 - 70, y - 62, 26, 46);
-  // Вывеска банка
-  const label = `${def.flag}  ${def.name.toUpperCase()}`;
-  ctx.font = '700 15px system-ui';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(label).width + 28;
-  const bx = (x0 + x1) / 2 - tw / 2;
-  ctx.fillStyle = def.accent;
-  roundRect(bx, y - 96, tw, 30, 8); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.fillText(label, (x0 + x1) / 2, y - 81);
+export function setPlayerFlip(view, faceRight) {
+  const b = view.__body;
+  if (!b) return;
+  const k = Math.abs(b.scale.x);
+  b.scale.x = faceRight ? k : -k;
 }
 
-function drawFx(dt) {
-  for (let i = floats.length - 1; i >= 0; i--) {
-    const f = floats[i];
+/** Поставить актёра в тайл. */
+export function placeActor(view, x, y, z = 0) {
+  const p = px(x, y, z);
+  view.x = p.x; view.y = p.y;
+  view.zIndex = depth(x, y, z);
+}
+
+export function removeView(v) { v?.parent?.removeChild(v); v?.destroy?.({ children: true }); }
+
+// ── Летящие монетки и всплывашки ─────────────────────────────────────────────
+
+const flyers = [];
+
+export function flyCoin(fromX, fromY, toX, toY, onDone) {
+  const s = new Sprite(tex.coin);
+  s.anchor.set(0.5);
+  s.scale.set(0.26);
+  const a = px(fromX, fromY, 0.9), b = px(toX, toY, 0.9);
+  s.x = a.x; s.y = a.y;
+  fx.addChild(s);
+  flyers.push({ s, ax: a.x, ay: a.y, bx: b.x, by: b.y, t: 0, life: 0.42, onDone });
+}
+
+export function tickFx(dt) {
+  for (let i = flyers.length - 1; i >= 0; i--) {
+    const f = flyers[i];
     f.t += dt;
-    if (f.t > f.life) { floats.splice(i, 1); continue; }
-    const k = f.t / f.life;
-    ctx.save();
-    ctx.globalAlpha = 1 - k;
-    ctx.font = '700 15px system-ui';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,30,45,0.6)';
-    ctx.strokeText(f.text, f.x, f.y - k * 34);
-    ctx.fillStyle = f.color;
-    ctx.fillText(f.text, f.x, f.y - k * 34);
-    ctx.restore();
-  }
-  for (let i = puffs.length - 1; i >= 0; i--) {
-    const p = puffs[i];
-    p.t += dt;
-    if (p.t > p.life) { puffs.splice(i, 1); continue; }
-    const k = p.t / p.life;
-    ctx.save();
-    ctx.globalAlpha = (1 - k) * 0.6;
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 8 + k * 34, 0, 7); ctx.stroke();
-    ctx.restore();
+    const k = Math.min(1, f.t / f.life);
+    f.s.x = f.ax + (f.bx - f.ax) * k;
+    f.s.y = f.ay + (f.by - f.ay) * k - Math.sin(k * Math.PI) * 40;
+    f.s.scale.set(0.26 * (1 - k * 0.35));
+    if (k >= 1) { f.onDone?.(); f.s.destroy(); flyers.splice(i, 1); }
   }
 }
 
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+// ── Камера ───────────────────────────────────────────────────────────────────
+
+const WALL_Z = 2.6;
+
+/** Габариты зала в координатах сцены — по ним считаем масштаб и упор камеры. */
+function bounds() {
+  return {
+    left: px(0, HALL.h).x - 26,
+    right: px(HALL.w, 0).x + 26,
+    top: px(0, 0, WALL_Z).y - 20,
+    bottom: px(HALL.w, HALL.h).y + 26,
+  };
 }
 
-/** Экранная позиция ряда этажа — нужна DOM-панелям. */
-export function floorScreenTop(i) { return sy(floorWorldY(i) + LAYOUT.floorH); }
-export function floorBarTop(i) { return sy(floorWorldY(i) + LAYOUT.barH); }
-export function viewH() { return H; }
-export function viewW() { return W; }
-export function isReady() { return ready; }
+let viewH = 0;
+const insets = { top: 0, bottom: 0 };
+
+export function fitCamera(hudTop = 0, hudBottom = 0) {
+  if (!app) return;
+  const b = bounds();
+  const h = Math.max(120, app.screen.height - hudTop - hudBottom);
+  const w = app.screen.width;
+  viewH = h;
+  // Изометрический зал всегда шире, чем выше (2:1), поэтому в портрет он целиком
+  // не влезает — камера ездит за игроком. Масштаб подбираем так, чтобы в кадре
+  // было ~7 тайлов по ширине, но зал не оказался мельче экрана по высоте.
+  const byWidth = w / (TW * 7);
+  const minByHeight = h / (b.bottom - b.top);
+  cam.scale = clamp(Math.max(byWidth, minByHeight * 0.92), 0.42, 1.3);
+  world.scale.set(cam.scale);
+}
+
+export function follow(x, y, hudTop = 0, hudBottom = 0) {
+  if (!app) return;
+  insets.top = hudTop; insets.bottom = hudBottom;
+  if (Math.abs(viewH - (app.screen.height - hudTop - hudBottom)) > 2) fitCamera(hudTop, hudBottom);
+  const p = px(x, y, 0);
+  const w = app.screen.width, h = app.screen.height;
+  const s = cam.scale;
+  const b = bounds();
+
+  let tx = w / 2 - p.x * s;
+  let ty = hudTop + (h - hudTop - hudBottom) / 2 - p.y * s;
+
+  // не пускаем камеру за края зала
+  const roomW = (b.right - b.left) * s;
+  if (roomW <= w) tx = (w - roomW) / 2 - b.left * s;
+  else tx = clamp(tx, w - b.right * s, -b.left * s);
+
+  const roomH = (b.bottom - b.top) * s;
+  const viewTop = hudTop, viewBot = h - hudBottom;
+  if (roomH <= viewBot - viewTop) ty = viewTop + ((viewBot - viewTop) - roomH) / 2 - b.top * s;
+  else ty = clamp(ty, viewBot - b.bottom * s, viewTop - b.top * s);
+
+  cam.x += (tx - cam.x) * 0.18;
+  cam.y += (ty - cam.y) * 0.18;
+  world.x = Math.round(cam.x);
+  world.y = Math.round(cam.y);
+}
+
+/** Экранная позиция тайла — нужна DOM-подсказкам над падами. */
+export function screenOf(x, y, z = 0) {
+  const p = px(x, y, z);
+  return { x: world.x + p.x * cam.scale, y: world.y + p.y * cam.scale };
+}
+
+export function sortItems() { items.sortChildren(); }

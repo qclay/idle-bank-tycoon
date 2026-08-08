@@ -1,30 +1,26 @@
-// Интеграция с Telegram Mini App: полный экран, безопасные зоны, тема,
-// профиль игрока, облачный сейв.
+// Telegram Mini App: полный экран, безопасные зоны, тема, профиль, облачный сейв.
 
 import { S, setCloud } from './state.js';
-import { SAVE_KEY as KEY } from './balance.js';
+import { SAVE_KEY } from './balance.js';
 
 let tg = null;
-
 export function isTG() { return !!tg; }
 
 /** Скрипт telegram-web-app.js подключается всегда и вне Telegram создаёт заглушку
  *  с версией 6.0 — её нужно отличать от настоящего клиента. */
-function realTelegram(w) {
+function real(w) {
   if (!w || !w.initDataUnsafe) return false;
   if (typeof w.initData === 'string' && w.initData.length > 0) return true;
-  if (w.initDataUnsafe.user && w.initDataUnsafe.user.id) return true;
+  if (w.initDataUnsafe.user?.id) return true;
   return !!w.platform && w.platform !== 'unknown';
 }
 
-/** Безопасный вызов метода SDK: неподдержанные версии кидают исключение. */
-function tryCall(fn) {
-  try { return fn(); } catch { return undefined; }
-}
+function tryCall(fn) { try { return fn(); } catch { return undefined; } }
 
 export function initTG() {
   const w = window.Telegram?.WebApp;
-  if (!realTelegram(w)) { tg = null; applySafeArea(0, 0); return false; }
+  applyVh();
+  if (!real(w)) { tg = null; applySafe(0, 0); return false; }
   tg = w;
 
   tryCall(() => tg.ready());
@@ -32,99 +28,102 @@ export function initTG() {
   tryCall(() => tg.requestFullscreen?.());
   tryCall(() => tg.disableVerticalSwipes?.());
   tryCall(() => tg.enableClosingConfirmation?.());
-  tryCall(() => tg.setHeaderColor?.('#16283f'));
-  tryCall(() => tg.setBackgroundColor?.('#0f1b2b'));
-  tryCall(() => tg.setBottomBarColor?.('#16283c'));
+  tryCall(() => tg.setHeaderColor?.('#0c1b2a'));
+  tryCall(() => tg.setBackgroundColor?.('#0c1b2a'));
+  tryCall(() => tg.setBottomBarColor?.('#0c1b2a'));
 
   const u = tg.initDataUnsafe?.user;
-  if (u) {
-    S.tg = {
-      id: u.id, name: [u.first_name, u.last_name].filter(Boolean).join(' '),
-      username: u.username || '', photo: u.photo_url || '', lang: u.language_code || 'ru',
-    };
-  }
+  if (u) S.tg = { id: u.id, name: [u.first_name, u.last_name].filter(Boolean).join(' '),
+                  username: u.username || '', photo: u.photo_url || '', lang: u.language_code || 'ru' };
 
   const sync = () => {
     const sa = tg.safeAreaInset || {};
     const ca = tg.contentSafeAreaInset || {};
-    applySafeArea((sa.top || 0) + (ca.top || 0), (sa.bottom || 0) + (ca.bottom || 0));
+    applySafe((sa.top || 0) + (ca.top || 0), (sa.bottom || 0) + (ca.bottom || 0));
+    applyVh(tg.viewportStableHeight);
     window.dispatchEvent(new Event('resize'));
   };
   sync();
   for (const ev of ['viewportChanged', 'safeAreaChanged', 'contentSafeAreaChanged', 'fullscreenChanged']) {
     tryCall(() => tg.onEvent(ev, sync));
   }
-
   setCloud(cloudApi());
   return true;
 }
 
-function applySafeArea(top, bottom) {
+function applySafe(top, bottom) {
   const r = document.documentElement.style;
-  r.setProperty('--sat', `${Math.max(top, 0)}px`);
-  r.setProperty('--sab', `${Math.max(bottom, 0)}px`);
+  r.setProperty('--sat', `${Math.max(0, top)}px`);
+  r.setProperty('--sab', `${Math.max(0, bottom)}px`);
 }
 
-// ── Облачный сейв ─────────────────────────────────────────────────────────────
-// CloudStorage хранит до 4096 байт на ключ, поэтому режем сейв на части.
+function applyVh(h) {
+  const v = h || window.innerHeight;
+  document.documentElement.style.setProperty('--vh', `${v}px`);
+}
+
+// ── Облачный сейв (по 3800 байт на ключ) ─────────────────────────────────────
 
 const CHUNK = 3800;
 
 function cloudApi() {
   if (!tg?.CloudStorage) return null;
   let pending = null, busy = false;
-
-  const write = (json) => {
-    pending = json;
-    if (busy) return;
-    busy = true;
-    setTimeout(flush, 2500);   // не чаще раза в 2.5 с
-  };
-
   const flush = () => {
     const json = pending; pending = null; busy = false;
     if (!json) return;
     const parts = [];
     for (let i = 0; i < json.length; i += CHUNK) parts.push(json.slice(i, i + CHUNK));
-    if (parts.length > 8) return;   // слишком большой сейв — остаётся только локальный
-    tryCall(() => tg.CloudStorage.setItem(`${KEY}_n`, String(parts.length), () => {}));
-    parts.forEach((p, i) => tryCall(() => tg.CloudStorage.setItem(`${KEY}_${i}`, p, () => {})));
+    if (parts.length > 8) return;
+    tryCall(() => tg.CloudStorage.setItem(`${SAVE_KEY}_n`, String(parts.length), () => {}));
+    parts.forEach((p, i) => tryCall(() => tg.CloudStorage.setItem(`${SAVE_KEY}_${i}`, p, () => {})));
   };
-
-  return { write };
+  return {
+    write(json) {
+      pending = json;
+      if (busy) return;
+      busy = true;
+      setTimeout(flush, 2500);
+    },
+  };
 }
 
 export function loadCloud() {
   return new Promise((resolve) => {
-    let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
-    setTimeout(() => done(null), 2500);   // не ждём вечно
-    if (!tg?.CloudStorage) return done(null);
-    tryCall(() => tg.CloudStorage.getItem(`${KEY}_n`, (err, n) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    setTimeout(() => fin(null), 2500);
+    if (!tg?.CloudStorage) return fin(null);
+    tryCall(() => tg.CloudStorage.getItem(`${SAVE_KEY}_n`, (err, n) => {
       const count = Number(n);
-      if (err || !count) return done(null);
-      const keys = Array.from({ length: count }, (_, i) => `${KEY}_${i}`);
+      if (err || !count) return fin(null);
+      const keys = Array.from({ length: count }, (_, i) => `${SAVE_KEY}_${i}`);
       tryCall(() => tg.CloudStorage.getItems(keys, (e2, map) => {
-        if (e2 || !map) return done(null);
-        try {
-          const json = keys.map((k) => map[k] || '').join('');
-          done(json ? JSON.parse(json) : null);
-        } catch { done(null); }
-      })) ?? done(null);
-    })) ?? done(null);
+        if (e2 || !map) return fin(null);
+        try { const j = keys.map((k) => map[k] || '').join(''); fin(j ? JSON.parse(j) : null); }
+        catch { fin(null); }
+      })) ?? fin(null);
+    })) ?? fin(null);
   });
 }
 
-export function tgHaptic(kind) {
-  try {
-    if (['success', 'error', 'warning'].includes(kind)) tg?.HapticFeedback?.notificationOccurred(kind);
-    else tg?.HapticFeedback?.impactOccurred(kind || 'light');
-  } catch { /* ничего */ }
-}
+/** Оплата звёздами: ссылку на счёт может выдать только бот.
+ *  Пропишите адрес бэкенда в PAY_API — тогда кнопки магазина заработают. */
+export const PAY_API = '';
 
-export function shareGame(text) {
-  const url = window.location.href.split('?')[0];
-  const link = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
-  if (tg?.openTelegramLink) tg.openTelegramLink(link);
-  else window.open(link, '_blank');
+export async function pay(item, onDone) {
+  if (!PAY_API) return { ok: false, why: 'Оплата звёздами подключается' };
+  if (!tg?.openInvoice) return { ok: false, why: 'Покупки работают только в Telegram' };
+  try {
+    const res = await fetch(`${PAY_API}/invoice`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tg.initData, item: item.id, stars: item.stars, title: item.title }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    const { link } = await res.json();
+    tg.openInvoice(link, (st) => { if (st === 'paid') onDone(item); });
+    return { ok: true };
+  } catch {
+    return { ok: false, why: 'Не удалось открыть оплату' };
+  }
 }
