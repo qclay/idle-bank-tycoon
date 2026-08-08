@@ -1,6 +1,6 @@
 // Состояние игры и сохранение.
 
-import { COUNTERS, ATMS, UPGRADES, SAVE_KEY, DAILY_POOL, DAILY_COUNT } from './balance.js';
+import { COUNTERS, ATMS, ZONES, UPGRADES, SAVE_KEY, DAILY_POOL, DAILY_COUNT } from './balance.js';
 
 export const S = {};
 const subs = new Set();
@@ -14,6 +14,8 @@ export function defaultState() {
   ATMS.forEach((a) => { atms[a.id] = { open: false, lvl: 1, cash: 0 }; });
   const ups = {};
   Object.keys(UPGRADES).forEach((k) => { ups[k] = 0; });
+  const zones = {};
+  ZONES.forEach((z) => { zones[z.id] = { open: false, lvl: 1 }; });
 
   return {
     v: 2,
@@ -26,7 +28,7 @@ export function defaultState() {
     level: 1,
     xp: 0,
 
-    counters, atms, ups,
+    counters, atms, zones, ups,
     runner: 0,                 // уровень инкассатора, 0 — не нанят
 
     stats: { served: 0, deposits: 0, earned: 0, upgrades: 0, opened: 1, hires: 0,
@@ -52,6 +54,7 @@ export function bootState(raw) {
   // объекты могли добавиться в новой версии
   for (const c of COUNTERS) if (!S.counters[c.id]) S.counters[c.id] = { open: false, lvl: 1, cash: 0, clerk: 0 };
   for (const a of ATMS) if (!S.atms[a.id]) S.atms[a.id] = { open: false, lvl: 1, cash: 0 };
+  for (const z of ZONES) if (!S.zones?.[z.id]) { S.zones = S.zones || {}; S.zones[z.id] = { open: false, lvl: 1 }; }
   for (const k of Object.keys(UPGRADES)) if (S.ups[k] == null) S.ups[k] = 0;
 }
 

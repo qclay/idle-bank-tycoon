@@ -115,7 +115,7 @@ ok('инкассатор нанимается', hire.okRunner && hire.runnerActi
 // 7. Инкассатор сам носит выручку
 const auto = await p.evaluate(() => {
   const { S, actors, game } = window.__game;
-  actors.player.x = 10; actors.player.y = 11;   // игрок в стороне
+  actors.player.x = 13.5; actors.player.y = 11.5;   // в стороне и вне площадок
   S.counters.c1.cash = 0;
   S.cash = 0;
   for (let i = 0; i < 120 / 0.05; i++) {

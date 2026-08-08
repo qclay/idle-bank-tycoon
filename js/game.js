@@ -1,8 +1,8 @@
 // Экономика зала: обслуживание, наличные, пады покупки, апгрейды, оффлайн.
 
 import {
-  COUNTERS, ATMS, UPGRADES, COUNTER_UP, CUSTOMER, STAFF, VAULT, XP, xpForLevel,
-  OFFLINE, BOOSTS, SAFES, ACHIEVEMENTS, DAILY_POOL, DAILY_ALL,
+  COUNTERS, ATMS, ZONES, UPGRADES, COUNTER_UP, CUSTOMER, STAFF, VAULT, XP, xpForLevel,
+  OFFLINE, BOOSTS, SAFES, ACHIEVEMENTS, DAILY_POOL, DAILY_ALL, PAD_DWELL, PAD_STOP_SPEED,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import { clamp, dist } from './core.js';
@@ -13,11 +13,41 @@ import {
   atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids,
 } from './actors.js';
 
+// ── Зоны: постоянные бонусы на весь бизнес ───────────────────────────────────
+
+/** Суммарный бонус зон нужного типа: spawn | pay | speed | offline. */
+export function zoneBonus(effect) {
+  let b = 0;
+  for (const z of ZONES) {
+    const st = S.zones?.[z.id];
+    if (st?.open && z.effect === effect) b += z.step * st.lvl;
+  }
+  return b;
+}
+export function zoneUpCost(z) {
+  const st = S.zones[z.id];
+  return Math.ceil(z.cost * 0.45 * z.grow ** (st.lvl - 1));
+}
+export function upgradeZone(z) {
+  const st = S.zones[z.id];
+  if (st.lvl >= z.max) return false;
+  const cost = zoneUpCost(z);
+  if (S.cash < cost) return false;
+  S.cash -= cost;
+  st.lvl++;
+  S.stats.upgrades++;
+  bumpDaily('upgrades');
+  addXp(XP.perUpgrade);
+  emit('upgrade'); save();
+  return true;
+}
+
 // ── Формулы ──────────────────────────────────────────────────────────────────
 
 export function counterPay(def) {
   const st = S.counters[def.id];
-  return def.base * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost();
+  return def.base * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost()
+    * (1 + zoneBonus('pay'));
 }
 export function counterUpCost(def) {
   const st = S.counters[def.id];
@@ -52,7 +82,7 @@ export function clerkCost(def) {
 }
 export function clerkSpeed(def) {
   const st = S.counters[def.id];
-  return STAFF.clerk.speedBase + STAFF.clerk.speedStep * (st.clerk - 1);
+  return (STAFF.clerk.speedBase + STAFF.clerk.speedStep * (st.clerk - 1)) * (1 + zoneBonus('speed'));
 }
 export function runnerCost() { return Math.ceil(STAFF.runner.cost * STAFF.runner.grow ** S.runner); }
 
@@ -75,6 +105,11 @@ export function pads() {
     if (S.atms[a.id].open) continue;
     out.push({ id: 'buy_' + a.id, kind: 'atm', ref: a, cost: a.cost,
                x: a.x - 0.05, y: a.y + 0.75, w: 1.3, h: 1.3, title: a.name, color: 0x5fd35f });
+  }
+  for (const z of ZONES) {
+    if (S.zones?.[z.id]?.open) continue;
+    out.push({ id: 'buy_' + z.id, kind: 'zone', ref: z, cost: z.cost,
+               x: z.x, y: z.y + 1.5, w: 1.5, h: 1.5, title: z.name, color: 0x5fd35f });
   }
   for (const k of Object.keys(UPGRADES)) {
     const u = UPGRADES[k];
@@ -219,9 +254,10 @@ export function takeFromSource(src, room) {
 // ── Пады: стоишь — платишь ───────────────────────────────────────────────────
 
 /** Активная площадка под игроком: её же подсвечивает интерфейс. */
-export const padState = { id: null, short: false };
+export const padState = { id: null, short: false, arming: false };
 
 let coinTick = 0;
+const dwell = new Map();   // id площадки → сколько секунд игрок на ней стоит
 
 /** Сколько денег доступно на покупку: счёт плюс то, что игрок несёт в руках.
  *  Раньше площадка списывала только со счёта — игрок стоял с полной сумкой,
@@ -245,15 +281,25 @@ function payFrom(amount) {
 
 function tickPads(dt, ui) {
   const list = pads();
-  padState.id = null; padState.short = false;
+  padState.id = null; padState.short = false; padState.arming = false;
+  const alive = new Set();
   for (const p of list) {
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
     // Круг с запасом: по прямоугольнику игрок постоянно промахивался мимо зоны.
     const r = Math.max(p.w, p.h) / 2 + 0.62;
     if (dist(player.x, player.y, cx, cy) > r) continue;
+    alive.add(p.id);
     const paid = S.padPaid[p.id] || 0;
     if (paid >= p.cost) continue;
     padState.id = p.id;
+
+    // Списываем, только когда игрок остановился на площадке: иначе он терял
+    // деньги, просто проходя мимо по дороге к кассе.
+    const speed = Math.hypot(player.vx || 0, player.vy || 0);
+    if (speed > PAD_STOP_SPEED) { dwell.set(p.id, 0); padState.arming = true; continue; }
+    const t0 = (dwell.get(p.id) || 0) + dt;
+    dwell.set(p.id, t0);
+    if (t0 < PAD_DWELL) { padState.arming = true; continue; }
     const have = spendable();
     if (have < 1) { padState.short = true; continue; }
     const rate = Math.max(p.cost / 2.2, 14);
@@ -269,6 +315,8 @@ function tickPads(dt, ui) {
     }
     if (S.padPaid[p.id] >= p.cost - 1e-6) finishPad(p, ui);
   }
+  // сошёл с площадки — отсчёт начинается заново
+  for (const id of [...dwell.keys()]) if (!alive.has(id)) dwell.delete(id);
 }
 
 function finishPad(p, ui) {
@@ -291,6 +339,14 @@ function finishPad(p, ui) {
     bumpDaily('opened');
     addXp(XP.perBuy);
     ui?.toast(`Открыт ${p.ref.name}`);
+    refreshSolids();
+    emit('build');
+  } else if (p.kind === 'zone') {
+    S.zones[p.ref.id].open = true;
+    S.stats.opened++;
+    bumpDaily('opened');
+    addXp(XP.perBuy);
+    ui?.toast(`Открыта зона «${p.ref.name}»`);
     refreshSolids();
     emit('build');
   } else if (p.kind === 'up') {
@@ -443,7 +499,7 @@ export function autoIncome() {
 function spawnSeconds() {
   const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
   return Math.max(CUSTOMER.minSpawn,
-    CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1));
+    CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1) / (1 + zoneBonus('spawn')));
 }
 
 /** Оценка текущего дохода для интерфейса (учитывает ручную игру). */
@@ -464,7 +520,7 @@ export function shownIncome() {
 export function computeOffline(sec) {
   const t = Math.min(sec, offlineCapSec());
   if (t < 60) return null;
-  const amount = autoIncome() * t * OFFLINE.rate;
+  const amount = autoIncome() * t * OFFLINE.rate * (1 + zoneBonus('offline'));
   if (amount <= 0) return null;
   return { amount, seconds: t, capped: sec > offlineCapSec() };
 }

@@ -9,7 +9,7 @@ import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.
 
 import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
 import * as fx from './fx.js';
-import { HALL, VAULT, COUNTERS, ATMS, UPGRADES } from './balance.js';
+import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR } from './balance.js';
 
 export const INK = 0x3f2b18;
 
@@ -116,6 +116,7 @@ export async function initScene(host, onProgress = () => {}) {
 
   buildGround();
   fx.initFx(fxLayer, document.getElementById('worldUI'), tex.coin, screenOf);
+  buildTraffic();
   fitCamera();
   window.addEventListener('resize', () => fitCamera(insets.top, insets.bottom));
   onProgress(1);
@@ -196,18 +197,21 @@ function buildGround() {
   isoRhomb(g, 0, 0, HALL.w, HALL.h, 0.004, 0x000000, { alpha: 0, ow: 2.5, oc: 0x6b5a44, oa: 0.35 });
 
   // задние стены: по y = 0 и по x = 0
-  isoBox(g, 0, -0.22, HALL.w, 0, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
-  isoBox(g, -0.22, 0, 0, HALL.h, 0, 2.6, WALL, { right: shade(WALL, -0.16), left: shade(WALL, -0.04), sheen: false });
+  isoBox(g, 0, -0.34, HALL.w, 0, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
+  isoBox(g, -0.34, 0, 0, HALL.h, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
+  // парапет по верху — силуэт здания
+  isoBox(g, -0.34, -0.34, HALL.w, 0, 2.6, 0.3, 0x7C3AED, { sheen: false });
+  isoBox(g, -0.34, 0, 0, HALL.h, 2.6, 0.3, 0x7C3AED, { sheen: false });
   // плинтус
-  isoBox(g, 0, -0.22, HALL.w, 0, 0, 0.14, 0x7C3AED);
-  isoBox(g, -0.22, 0, 0, HALL.h, 0, 0.14, 0x7C3AED);
+  isoBox(g, 0, -0.34, HALL.w, 0, 0, 0.14, 0x7C3AED);
+  isoBox(g, -0.34, 0, 0, HALL.h, 0, 0.14, 0x7C3AED);
 
   // окна на дальней стене
   for (let x = 3.4; x < HALL.w - 1.5; x += 3.4) {
-    isoBox(g, x, -0.24, x + 1.7, -0.2, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
+    isoBox(g, x, -0.36, x + 1.7, -0.32, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
   }
   for (let y = 3.4; y < HALL.h - 1.5; y += 3.4) {
-    isoBox(g, -0.24, y, -0.2, y + 1.7, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
+    isoBox(g, -0.36, y, -0.32, y + 1.7, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
   }
 
   // стеллажи с посылками вдоль дальних стен
@@ -261,10 +265,81 @@ function buildGround() {
   bench(15.3, 9.1);
   ground.addChild(dec);
 
+  buildStreet();
+
   // входная зона
   const dg = new Graphics();
   isoRhomb(dg, 15.1, 11.5, 17.4, 12.96, 0.006, 0x6f8fb5, { alpha: 0.45, ow: 2, oc: 0x44607f, oa: 0.6 });
   ground.addChild(dg);
+}
+
+/** Улица ЗА дальними стенами: тротуар, дорога, фасады напротив.
+ *  Именно за стенами — если вынести её вперёд, она закрывает зал. */
+function buildStreet() {
+  const g = new Graphics();
+  const W = HALL.w, H = HALL.h;
+  const w1 = STREET.walk, rd = STREET.road, fr = STREET.far;
+  const a1 = -w1, a2 = -(w1 + rd), a3 = -(w1 + rd + fr), a4 = a3 - 2.6;
+
+  // тротуар у здания
+  isoRhomb(g, a4, a1, W + 2, 0, 0, 0xd8d3e6);
+  isoRhomb(g, a1, a4, 0, H + 2, 0, 0xd8d3e6);
+  // проезжая часть
+  isoRhomb(g, a4, a2, W + 2, a1, 0, 0x4a4560);
+  isoRhomb(g, a2, a4, a1, H + 2, 0, 0x4a4560);
+  // разметка
+  for (let x = a3; x < W + 2; x += 2.4) {
+    isoRhomb(g, x, a1 - rd / 2 - 0.06, x + 1.2, a1 - rd / 2 + 0.06, 0.002, 0xe8e4f2);
+  }
+  for (let y = a3; y < H + 2; y += 2.4) {
+    isoRhomb(g, a1 - rd / 2 - 0.06, y, a1 - rd / 2 + 0.06, y + 1.2, 0.002, 0xe8e4f2);
+  }
+  // дальний тротуар
+  isoRhomb(g, a4, a3, W + 2, a2, 0, 0xd8d3e6);
+  isoRhomb(g, a3, a4, a2, H + 2, 0, 0xd8d3e6);
+
+  // фасады напротив — уходят вверх экрана, зал не загораживают
+  const FAC = [0xB9A9D6, 0xA7BEE0, 0xCBB6C6, 0xB6CDBD, 0xD8C3A5];
+  let seed = 21;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let x = a3; x < W + 2; x += 3.2) {
+    const hh = 3.4 + rnd() * 3.6;
+    const c = FAC[Math.floor(rnd() * FAC.length)];
+    isoBox(g, x, a4, x + 2.8, a3, 0, hh, c, { sheen: false });
+    for (let f = 0; f < Math.floor(hh / 1.15); f++) {
+      isoBox(g, x + 0.35, a3 - 0.05, x + 2.45, a3 - 0.01, 0.6 + f * 1.15, 0.62, 0xF2EEFA, { ow: 1.2 });
+    }
+  }
+  for (let y = a3; y < H + 2; y += 3.2) {
+    const hh = 3.4 + rnd() * 3.6;
+    const c = FAC[Math.floor(rnd() * FAC.length)];
+    isoBox(g, a4, y, a3, y + 2.8, 0, hh, c, { sheen: false });
+    for (let f = 0; f < Math.floor(hh / 1.15); f++) {
+      isoBox(g, a3 - 0.05, y + 0.35, a3 - 0.01, y + 2.45, 0.6 + f * 1.15, 0.62, 0xF2EEFA, { ow: 1.2 });
+    }
+  }
+
+  // фонари и деревья на ближнем тротуаре
+  const lamp = (x, y) => {
+    isoBox(g, x, y, x + 0.16, y + 0.16, 0, 2.0, 0x6b6480);
+    isoBox(g, x - 0.22, y - 0.22, x + 0.38, y + 0.38, 2.0, 0.16, 0xF6E7A8);
+  };
+  const tree = (x, y) => {
+    isoCyl(g, x, y, 0.14, 0, 0.75, 0x7a5a3c);
+    isoCyl(g, x, y, 0.62, 0.7, 0.55, 0x3F8F4A);
+    isoCyl(g, x, y, 0.44, 1.2, 0.45, 0x5FA855);
+    isoCyl(g, x, y, 0.24, 1.6, 0.34, 0x7BC46A);
+  };
+  for (let x = 1.4; x < W; x += 4.6) { lamp(x, a1 + 0.5); tree(x + 2.2, a1 + 0.7); }
+  for (let y = 1.4; y < H; y += 4.6) { lamp(a1 + 0.5, y); tree(a1 + 0.7, y + 2.2); }
+
+  // тонкий тротуар по всему переднему краю: без него пол обрывается в пустоту
+  isoRhomb(g, a1, H, W + 1.4, H + 1.3, 0, 0xd8d3e6);
+  isoRhomb(g, W, a1, W + 1.3, H + 1.3, 0, 0xd8d3e6);
+  isoBox(g, a1, H, W + 1.4, H + 0.1, 0, 0.1, 0xbfb8d4, { sheen: false });
+  isoBox(g, W, a1, W + 0.1, H + 1.3, 0, 0.1, 0xbfb8d4, { sheen: false });
+
+  ground.addChildAt(g, 0);
 }
 
 // ── Объекты зала ─────────────────────────────────────────────────────────────
@@ -356,6 +431,54 @@ export function buildAtm(def, opened) {
   return c;
 }
 
+/** Зона пункта: у каждой свой узнаваемый силуэт. */
+export function buildZone(def, opened) {
+  const c = new Container();
+  const g = new Graphics();
+  const x = def.x, y = def.y;
+  if (!opened) {
+    isoBox(g, x, y, x + 2.2, y + 1.2, 0, 1.2, def.tone, { ow: 0, sheen: false });
+    c.addChild(g);
+    c.alpha = 0.16;
+    c.zIndex = depth(x + 1.1, y + 1.2);
+    items.addChild(c);
+    return c;
+  }
+  if (def.effect === 'spawn') {              // кофе-точка
+    isoBox(g, x, y, x + 2.2, y + 0.8, 0, 0.9, def.tone);
+    isoBox(g, x - 0.06, y - 0.06, x + 2.26, y + 0.86, 0.9, 0.1, 0xFBFAFF);
+    isoBox(g, x + 0.2, y + 0.1, x + 0.7, y + 0.6, 1.0, 0.62, 0x5B4636);
+    isoBox(g, x + 1.1, y + 0.2, x + 1.4, y + 0.5, 1.0, 0.3, 0xE9C46A);
+    isoBox(g, x + 1.6, y + 0.2, x + 1.9, y + 0.5, 1.0, 0.3, 0xF4A261);
+    isoBox(g, x + 0.5, y + 1.0, x + 1.7, y + 1.2, 0, 0.72, 0xC7B9F5);  // столик
+  } else if (def.effect === 'pay') {         // примерочные
+    for (let i = 0; i < 2; i++) {
+      const cx = x + i * 1.15;
+      isoBox(g, cx, y, cx + 1.0, y + 1.15, 0, 2.1, 0xF2EEFA, { sheen: false });
+      isoBox(g, cx + 0.08, y + 1.15, cx + 0.92, y + 1.19, 0.1, 1.85, def.tone, { ow: 1.4 });
+      isoBox(g, cx, y, cx + 1.0, y + 1.15, 2.1, 0.1, def.tone);
+    }
+  } else if (def.effect === 'speed') {       // сортировочный стол с коробками
+    isoBox(g, x, y, x + 2.2, y + 1.0, 0, 0.8, 0x9C96B8);
+    isoBox(g, x - 0.05, y - 0.05, x + 2.25, y + 1.05, 0.8, 0.1, def.tone);
+    for (let i = 0; i < 4; i++) {
+      const cc = PARCEL[i % PARCEL.length];
+      isoBox(g, x + 0.15 + i * 0.5, y + 0.25, x + 0.55 + i * 0.5, y + 0.7, 0.9, 0.4, cc);
+    }
+  } else {                                    // погрузка: ворота и паллеты
+    isoBox(g, x, y, x + 0.16, y + 1.4, 0, 2.4, 0x6B6390);
+    isoBox(g, x + 2.0, y, x + 2.16, y + 1.4, 0, 2.4, 0x6B6390);
+    isoBox(g, x, y, x + 2.16, y + 0.16, 2.2, 0.4, def.tone);
+    isoBox(g, x + 0.3, y + 0.3, x + 1.9, y + 1.2, 0, 0.16, 0x8b7355);
+    isoBox(g, x + 0.45, y + 0.45, x + 1.2, y + 1.05, 0.16, 0.5, PARCEL[2]);
+    isoBox(g, x + 1.25, y + 0.5, x + 1.8, y + 1.0, 0.16, 0.38, PARCEL[0]);
+  }
+  c.addChild(g);
+  c.zIndex = depth(x + 1.1, y + 1.2);
+  items.addChild(c);
+  return c;
+}
+
 /** Пад на полу: покупка объекта или апгрейд. */
 export function buildPad(x, y, w, h, color) {
   const c = new Container();
@@ -443,6 +566,84 @@ export function drawCashPile(cont, x, y, z, ratio) {
     s.x = p.x; s.y = p.y;
   }
   cont.zIndex = depth(x, y) + 1;
+}
+
+// ── Уличное движение ─────────────────────────────────────────────────────────
+
+const traffic = [];
+const CAR_COLORS = [0xE24A4A, 0x3B82F6, 0xFACC15, 0x10B981, 0xF97316, 0xE879F9, 0x94A3B8];
+
+function makeCar(color, vertical) {
+  const c = new Container();
+  const g = new Graphics();
+  const L = vertical ? 0.7 : 1.7, Wd = vertical ? 1.7 : 0.7;
+  isoBox(g, 0, 0, L, Wd, 0.02, 0.34, color);
+  isoBox(g, L * 0.22, Wd * 0.15, L * 0.78, Wd * 0.85, 0.36, 0.3, shade(color, 0.28));
+  isoBox(g, L * 0.26, Wd * 0.2, L * 0.74, Wd * 0.8, 0.66, 0.04, shade(color, -0.2));
+  c.addChild(g);
+  c.__len = vertical ? Wd : L;
+  items.addChild(c);
+  return c;
+}
+
+/** Машины по дороге и прохожие по тротуару — улица должна жить. */
+function buildTraffic() {
+  const W = HALL.w, H = HALL.h;
+  const w1 = STREET.walk, rd = STREET.road;
+  const lanes = [
+    { vertical: false, y: -(w1 + rd * 0.28), dir: 1 },
+    { vertical: false, y: -(w1 + rd * 0.72), dir: -1 },
+    { vertical: true,  x: -(w1 + rd * 0.28), dir: 1 },
+    { vertical: true,  x: -(w1 + rd * 0.72), dir: -1 },
+  ];
+  lanes.forEach((ln, li) => {
+    const n = 3;
+    for (let i = 0; i < n; i++) {
+      const color = CAR_COLORS[(li * 3 + i) % CAR_COLORS.length];
+      const view = makeCar(color, ln.vertical);
+      const span = ln.vertical ? H + w1 + rd + 6 : W + w1 + rd + 6;
+      traffic.push({
+        view, kind: 'car', vertical: ln.vertical, lane: ln,
+        t: (i / n) * span + li * 2.1, span,
+        speed: 2.6 + (li % 2) * 0.7 + i * 0.25,
+      });
+    }
+  });
+
+  // прохожие по ближнему тротуару
+  for (let i = 0; i < 6; i++) {
+    const vertical = i % 2 === 1;
+    const view = makeCharView(0xffffff);
+    const span = vertical ? HALL.h + 4 : HALL.w + 4;
+    traffic.push({
+      view, kind: 'ped', vertical, t: (i / 6) * span, span,
+      speed: 0.9 + (i % 3) * 0.25, dir: i % 4 < 2 ? 1 : -1,
+      off: -(STREET.walk * (0.3 + (i % 2) * 0.4)),
+      ft: 0,
+    });
+  }
+}
+
+export function tickTraffic(dt) {
+  for (const t of traffic) {
+    t.t += t.speed * dt;
+    if (t.t > t.span + 4) t.t -= t.span + 8;
+    let x, y;
+    if (t.kind === 'car') {
+      const p0 = t.lane.dir > 0 ? t.t - 4 : t.span - t.t;
+      if (t.vertical) { x = t.lane.x; y = p0; } else { x = p0; y = t.lane.y; }
+      const pt = px(x, y, 0);
+      t.view.x = pt.x; t.view.y = pt.y;
+      t.view.zIndex = depth(x, y);
+    } else {
+      const p0 = t.dir > 0 ? t.t - 2 : t.span - t.t;
+      if (t.vertical) { x = t.off; y = p0; } else { x = p0; y = t.off; }
+      t.ft += dt * 7;
+      const dir = t.vertical ? (t.dir > 0 ? 'se' : 'nw') : (t.dir > 0 ? 'se' : 'nw');
+      setCharFrame(t.view, dir, Math.floor(t.ft) % 4);
+      placeActor(t.view, x, y);
+    }
+  }
 }
 
 // ── Актёры ───────────────────────────────────────────────────────────────────
@@ -592,11 +793,13 @@ const WALL_Z = 2.6;
 
 /** Габариты зала в координатах сцены — по ним считаем масштаб и упор камеры. */
 function bounds() {
+  // сверху видно улицу за стенами, снизу — только узкий тротуар у входа
+  const back = STREET.walk + STREET.road + STREET.far * 0.5;
   return {
-    left: px(0, HALL.h).x - 26,
-    right: px(HALL.w, 0).x + 26,
-    top: px(0, 0, WALL_Z).y - 20,
-    bottom: px(HALL.w, HALL.h).y + 26,
+    left: px(-back, HALL.h + 1).x - 20,
+    right: px(HALL.w + 1, -back).x + 20,
+    top: px(-back, -back).y - 20,
+    bottom: px(HALL.w + 1, HALL.h + 1.3).y + 20,
   };
 }
 

@@ -1,6 +1,6 @@
 // Игрок, клиенты и персонал: движение по залу и поведение.
 
-import { HALL, VAULT, DOOR, START, COUNTERS, ATMS, CUSTOMER, STAFF, UPGRADES } from './balance.js';
+import { HALL, VAULT, DOOR, START, COUNTERS, ATMS, ZONES, CUSTOMER, STAFF, UPGRADES } from './balance.js';
 import { S } from './state.js';
 import { isoDir, clamp, dist } from './core.js';
 import * as scene from './scene.js';
@@ -24,7 +24,8 @@ export function atmTray(def) { return { x: def.x + 0.36, y: def.y + 0.35 }; }
 function solids() {
   const out = [{ x0: VAULT.x, y0: VAULT.y, x1: VAULT.x + VAULT.w, y1: VAULT.y + VAULT.h + 0.2 }];
   for (const c of COUNTERS) out.push({ x0: c.x, y0: c.y, x1: c.x + 2, y1: c.y + 0.62 });
-  for (const a of ATMS) if (S.atms[a.id]?.open) out.push({ x0: a.x, y0: a.y, x1: a.x + 0.72, y1: a.y + 0.6 });
+  for (const a of ATMS) if (S.atms[a.id]?.open) out.push({ x0: a.x, y0: a.y, x1: a.x + 0.8, y1: a.y + 0.66 });
+  for (const z of ZONES) if (S.zones?.[z.id]?.open) out.push({ x0: z.x, y0: z.y, x1: z.x + 2.2, y1: z.y + 1.2 });
   return out;
 }
 let SOLIDS = null;
@@ -122,6 +123,12 @@ const TINTS = [0xffffff, 0xffd9c2, 0xd6e8ff, 0xd9ffd6, 0xf0dcff, 0xfff2c2];
 export function spawnRate() {
   const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
   let t = CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1);
+  let coffee = 0;
+  for (const z of ZONES) {
+    const zs = S.zones?.[z.id];
+    if (zs?.open && z.effect === 'spawn') coffee += z.step * zs.lvl;
+  }
+  t /= 1 + coffee;
   if (boostOn('rush')) t /= 3;
   return Math.max(CUSTOMER.minSpawn, t);
 }
@@ -161,7 +168,10 @@ export function tickCustomers(dt, onServed) {
       k.serve += dt * k.serveSpeed;
       if (k.serve >= CUSTOMER.serveTime) { onServed(k); k.state = 'leave'; k.t = 0; dequeue(k); scene.setServeRing(k.view, -1); }
     } else if (k.state === 'leave') {
-      if (stepTo(k, DOOR.x, DOOR.y + 0.6, CUSTOMER.walkOff, dt)) { kill(i); continue; }
+      // уходим наружу: столкновения выключены, иначе клипается о границу зала
+      stepTo(k, DOOR.x, HALL.h + 1.2, CUSTOMER.walkOff, dt, false);
+      k.view.alpha = Math.max(0, Math.min(1, (HALL.h + 0.4 - k.y) / 1.2));
+      if (k.y > HALL.h + 0.3) { kill(i); continue; }
     }
     draw(k, dt);
   }
@@ -170,7 +180,7 @@ export function tickCustomers(dt, onServed) {
 function spawn(c) {
   const k = {
     id: Math.random().toString(36).slice(2),
-    x: DOOR.x, y: DOOR.y + 0.5,
+    x: DOOR.x, y: HALL.h + 0.6,
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
     view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
     dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1,

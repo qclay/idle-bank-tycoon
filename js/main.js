@@ -1,6 +1,6 @@
 // Точка входа: загрузка, постройка зала, игровой цикл.
 
-import { COUNTERS, ATMS, SAVE_EVERY } from './balance.js';
+import { COUNTERS, ATMS, ZONES, SAVE_EVERY } from './balance.js';
 import { S, bootState, loadLocal, save, rollDaily, onChange } from './state.js';
 import * as scene from './scene.js';
 import * as actors from './actors.js';
@@ -11,7 +11,7 @@ import { initTG, loadCloud, isTG, pay } from './tg.js';
 import { fmt } from './core.js';
 import * as fx from './fx.js';
 
-const views = { counters: new Map(), atms: new Map(), piles: new Map(), pads: new Map() };
+const views = { counters: new Map(), atms: new Map(), zones: new Map(), piles: new Map(), pads: new Map() };
 let vaultView = null;
 
 window.__openTab = (tab) => {
@@ -118,6 +118,16 @@ function rebuildObjects() {
     views.atms.set(a.id, v);
     if (!views.piles.has(a.id)) views.piles.set(a.id, scene.buildCashPile());
   }
+  for (const z of ZONES) {
+    const open = !!S.zones?.[z.id]?.open;
+    const cur = views.zones.get(z.id);
+    if (cur && cur.__open === open) continue;
+    if (cur) scene.removeView(cur);
+    const v = scene.buildZone(z, open);
+    v.__open = open;
+    if (open && cur) fx.popIn(v);
+    views.zones.set(z.id, v);
+  }
   syncPads();
   scene.sortItems();
 }
@@ -195,6 +205,7 @@ function loop(now) {
     if (v) scene.setPadFill(v, (S.padPaid?.[p.id] || 0) / p.cost,
                             game.padState.id === p.id && game.padState.short);
   }
+  scene.tickTraffic(dt);
   scene.pulsePads([...views.pads.values()], dt, game.padState.id);
   fx.tick(dt);
   const ins = ui.hudInsets();

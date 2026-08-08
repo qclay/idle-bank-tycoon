@@ -2,14 +2,14 @@
 
 import { fmt, dur, clock, plural } from './core.js';
 import {
-  COUNTERS, ATMS, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
+  COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
   DAILY_ALL, OFFLINE,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
   counterPay, counterUpCost, upgradeCounter, atmRate, atmUpCost, upgradeAtm,
   clerkCost, clerkSpeed, hireClerk, runnerCost, hireRunner, boostLeft,
-  shownIncome, offlineUpCost, offlineCapSec, autoIncome,
+  shownIncome, offlineUpCost, offlineCapSec, autoIncome, zoneUpCost, upgradeZone, zoneBonus,
 } from './game.js';
 import { toast, haptic, setNav, setBadge } from './ui.js';
 
@@ -100,8 +100,8 @@ export function isOpen() { return !!cur; }
 export function staff() {
   setNav('staff');
   open({
-    title: 'Персонал',
-    render: staffView,
+    title: 'Бизнес',
+    tabs: [{ label: 'Стойки', render: staffView }, { label: 'Зоны', render: zonesView }],
     cap: () => {
       const cost = runnerCost();
       const lvl = S.runner;
@@ -173,6 +173,54 @@ function staffView() {
 
   if (!list.children.length) list.innerHTML = '<div class="empty">Откройте первую стойку в зале</div>';
   wrap.appendChild(list);
+  return wrap;
+}
+
+function zonesView() {
+  const wrap = document.createElement('div');
+  const list = document.createElement('div');
+  list.className = 'list';
+  const EFF = { spawn: 'к потоку клиентов', pay: 'к оплате заказа',
+                speed: 'к скорости операторов', offline: 'к доходу без вас' };
+  for (const z of ZONES) {
+    const st = S.zones?.[z.id] || { open: false, lvl: 1 };
+    if (!st.open) {
+      list.appendChild(h(`<div class="row" style="opacity:.62">
+        <span class="tile">${ic('i-lock', 'ic')}</span>
+        <div class="row__name">${esc(z.name)}</div>
+        <div class="row__sub">${esc(z.desc)} · постройте в зале за ${fmt(z.cost)}</div>
+      </div>`).firstElementChild);
+      continue;
+    }
+    const cost = zoneUpCost(z);
+    const maxed = st.lvl >= z.max;
+    const tone = z.effect === 'pay' ? 'tile--gold' : z.effect === 'speed' ? 'tile--cyan'
+               : z.effect === 'offline' ? 'tile--ok' : '';
+    const row = h(`<div class="row">
+      <span class="tile ${tone}">${ic(z.ic, 'ic')}</span>
+      <div class="row__name">${esc(z.name)}<span class="pill">ур. ${st.lvl}</span></div>
+      <div class="row__sub"><span class="pill pill--ok">+${Math.round(z.step * st.lvl * 100)}%</span>
+        ${EFF[z.effect]}</div>
+      ${btn('btn--ok btn--row', maxed ? 'Максимум' : 'Улучшить', maxed ? null : fmt(cost),
+            'i-coin', maxed || S.cash < cost)}
+    </div>`).firstElementChild;
+    if (!maxed && S.cash >= cost) row.querySelector('button').addEventListener('click', () => {
+      if (upgradeZone(z)) { haptic(); refresh(); }
+    });
+    list.appendChild(row);
+  }
+  wrap.appendChild(list);
+  wrap.appendChild(h(`<div class="sect">Суммарно от зон</div>`).firstElementChild);
+  wrap.appendChild(h(`<div class="row row--plain">
+    <span class="tile tile--ok">${ic('i-up', 'ic')}</span>
+    <div class="row__name">Бонусы бизнеса</div>
+    <div class="row__sub">
+      <span class="pill">поток +${Math.round(zoneBonus('spawn') * 100)}%</span>
+      <span class="pill">оплата +${Math.round(zoneBonus('pay') * 100)}%</span>
+      <span class="pill">скорость +${Math.round(zoneBonus('speed') * 100)}%</span>
+      <span class="pill">офлайн +${Math.round(zoneBonus('offline') * 100)}%</span>
+    </div>
+  </div>`).firstElementChild);
   return wrap;
 }
 

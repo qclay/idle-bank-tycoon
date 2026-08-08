@@ -4,37 +4,59 @@
 // Тайловая сетка. Стойка занимает 2×1: (x, y) и (x+1, y).
 // Оператор стоит за стойкой (y-1), клиент подходит спереди (y+1).
 
-export const HALL = { w: 18, h: 13 };
+export const HALL = { w: 24, h: 15 };
 
 export const VAULT = { x: 1, y: 1, w: 2.6, h: 1.6, drop: { x: 2.3, y: 3.5 } };
-export const DOOR = { x: 16, y: 12.3 };            // вход: отсюда приходят клиенты
-export const START = { x: 10, y: 9 };              // где игрок стоит на старте
+
+// Улица снаружи: тротуар, дорога, дальний тротуар с фасадами
+export const STREET = { walk: 2.4, road: 3.6, far: 2.2 };
+export const DOOR = { x: 21.5, y: 14.4 };          // вход: отсюда приходят клиенты
+export const START = { x: 12, y: 11 };             // где игрок стоит на старте
 
 // Стойки выдачи: cost — цена открытия, base — выручка с одного клиента на 1 ур.
 export const COUNTERS = [
   { id: 'c1', name: 'Выдача заказов', x: 6,  y: 2, cost: 0,      base: 12,    tone: 0x7C3AED },
-  { id: 'c2', name: 'Примерочная',    x: 10, y: 2, cost: 900,    base: 46,    tone: 0x0EA5E9 },
-  { id: 'c3', name: 'Приём возвратов',x: 14, y: 2, cost: 9000,   base: 190,   tone: 0x22C55E },
-  { id: 'c4', name: 'Крупногабарит',  x: 6,  y: 7, cost: 78000,  base: 760,   tone: 0xF59E0B },
-  { id: 'c5', name: 'Экспресс-выдача',x: 10, y: 7, cost: 640000, base: 3000,  tone: 0xEC4899 },
-  { id: 'c6', name: 'Premium-зона',   x: 14, y: 7, cost: 5.2e6,  base: 12000, tone: 0x14B8A6 },
+  { id: 'c2', name: 'Примерочная',    x: 11, y: 2, cost: 900,    base: 46,    tone: 0x0EA5E9 },
+  { id: 'c3', name: 'Приём возвратов',x: 16, y: 2, cost: 9000,   base: 190,   tone: 0x22C55E },
+  { id: 'c4', name: 'Крупногабарит',  x: 6,  y: 8, cost: 78000,  base: 760,   tone: 0xF59E0B },
+  { id: 'c5', name: 'Экспресс-выдача',x: 11, y: 8, cost: 640000, base: 3000,  tone: 0xEC4899 },
+  { id: 'c6', name: 'Premium-зона',   x: 16, y: 8, cost: 5.2e6,  base: 12000, tone: 0x14B8A6 },
 ];
 
 // Постаматы: выдают заказы сами, выручка копится в ячейках — её тоже нужно забирать
 export const ATMS = [
-  { id: 'a1', name: 'Постамат', x: 1, y: 6.4, cost: 4200,   rate: 26,  tone: 0x8B5CF6 },
-  { id: 'a2', name: 'Постамат', x: 1, y: 8.2, cost: 130000, rate: 520, tone: 0x8B5CF6 },
+  { id: 'a1', name: 'Постамат', x: 1.7, y: 5.4,  cost: 4200,   rate: 26,   tone: 0x8B5CF6 },
+  { id: 'a2', name: 'Постамат', x: 1.7, y: 7.8,  cost: 130000, rate: 520,  tone: 0x8B5CF6 },
+  { id: 'a3', name: 'Постамат', x: 1.7, y: 10.2, cost: 2.4e6,  rate: 7800, tone: 0x8B5CF6 },
+  { id: 'a4', name: 'Постамат', x: 1.7, y: 12.6, cost: 4.1e7,  rate: 1.1e5,tone: 0x8B5CF6 },
+];
+
+// Зоны пункта: разовая постройка с постоянным эффектом на весь бизнес.
+// Ставятся на площадку в зале, уровни качаются в окне «Бизнес».
+export const ZONES = [
+  { id: 'z_coffee', name: 'Кофе-точка',  x: 20.6, y: 2.2,  cost: 26000,  ic: 'i-cup',
+    tone: 0xF59E0B, effect: 'spawn',   step: 0.10, grow: 1.6, max: 20,
+    desc: 'Клиенты приходят чаще' },
+  { id: 'z_fit',    name: 'Примерочные', x: 20.6, y: 5.6,  cost: 210000, ic: 'i-fit',
+    tone: 0xEC4899, effect: 'pay',     step: 0.12, grow: 1.65, max: 20,
+    desc: 'Клиенты платят больше' },
+  { id: 'z_sort',   name: 'Сортировка',  x: 20.6, y: 9.0,  cost: 1.6e6,  ic: 'i-sort',
+    tone: 0x0EA5E9, effect: 'speed',   step: 0.12, grow: 1.7, max: 20,
+    desc: 'Операторы работают быстрее' },
+  { id: 'z_load',   name: 'Погрузка',    x: 20.6, y: 12.4, cost: 1.2e7,  ic: 'i-truck',
+    tone: 0x22C55E, effect: 'offline',  step: 0.15, grow: 1.7, max: 20,
+    desc: 'Больше дохода, пока вас нет' },
 ];
 
 // ─── Прокачка ────────────────────────────────────────────────────────────────
 
 export const UPGRADES = {
   // Пад стоит в зале, игрок встаёт на него и держит — деньги списываются
-  bag:   { id: 'bag',   name: 'Тележка',  desc: 'Больше выручки за раз', x: 1,  y: 4.3,
+  bag:   { id: 'bag',   name: 'Тележка',  desc: 'Больше выручки за раз', x: 6.0,  y: 12.6,
            cost: 260,  grow: 1.55, step: 6,    base: 12,  max: 60, ic: 'i-cart' },
-  boots: { id: 'boots', name: 'Кроссовки',desc: 'Скорость ходьбы',       x: 3.4, y: 4.3,
+  boots: { id: 'boots', name: 'Кроссовки',desc: 'Скорость ходьбы',       x: 9.6,  y: 12.6,
            cost: 420,  grow: 1.62, step: 0.26, base: 4.3, max: 30, ic: 'i-run' },
-  vault: { id: 'vault', name: 'Касса',    desc: 'Множитель выручки',     x: 4.4, y: 1.3,
+  vault: { id: 'vault', name: 'Касса',    desc: 'Множитель выручки',     x: 13.2, y: 12.6,
            cost: 1500, grow: 1.7,  step: 0.12, base: 1,   max: 40, ic: 'i-coin' },
 };
 
@@ -137,6 +159,12 @@ export const SHOP_GOLD = [
   { id: 'g5', gold: 5500,  stars: 1700, size: 1,   tag: '+60%' },
   { id: 'g6', gold: 15000, stars: 4000, size: 1,   tag: '+85%', best: true },
 ];
+
+// Оплата на площадке идёт, только когда игрок ОСТАНОВИЛСЯ на ней.
+// Пауза от одного скорости мало: зона больше двух тайлов, и на проходе
+// игрок успевал её выстоять — деньги списывались по дороге к кассе.
+export const PAD_DWELL = 0.22;      // секунд после остановки
+export const PAD_STOP_SPEED = 0.9;  // тайлов/с: быстрее — считаем, что идёт мимо
 
 export const SAVE_KEY = 'idlebank2';
 export const SAVE_EVERY = 5000;
