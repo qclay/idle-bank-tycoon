@@ -4,6 +4,8 @@ import { HALL, VAULT, DOOR, START, COUNTERS, ATMS, ZONES, CUSTOMER, STAFF, UPGRA
 import { S } from './state.js';
 import { isoDir, clamp, dist } from './core.js';
 import * as scene from './scene.js';
+import * as reviews from './reviews.js';
+import { REP } from './balance.js';
 
 // ── Геометрия объектов ───────────────────────────────────────────────────────
 
@@ -128,7 +130,7 @@ export function spawnRate() {
     const zs = S.zones?.[z.id];
     if (zs?.open && z.effect === 'spawn') coffee += z.step * zs.lvl;
   }
-  t /= 1 + coffee;
+  t /= (1 + coffee) * reviews.spawnMult();
   if (boostOn('rush')) t /= 3;
   return Math.max(CUSTOMER.minSpawn, t);
 }
@@ -163,10 +165,27 @@ export function tickCustomers(dt, onServed) {
       const idx = queueIndex(k);
       const q = queueSpot(counterDef(k.counter), idx);
       stepTo(k, q.x, q.y, CUSTOMER.speed, dt);
+      k.waited = Math.min(1, k.t / CUSTOMER.patience);
       if (k.t > CUSTOMER.patience) { k.state = 'leave'; k.angry = true; dequeue(k); scene.setServeRing(k.view, -1); }
     } else if (k.state === 'serve') {
       k.serve += dt * k.serveSpeed;
-      if (k.serve >= CUSTOMER.serveTime) { onServed(k); k.state = 'leave'; k.t = 0; dequeue(k); scene.setServeRing(k.view, -1); }
+      if (k.serve >= CUSTOMER.serveTime) {
+        onServed(k);
+        dequeue(k); scene.setServeRing(k.view, -1);
+        const r = reviews.onServed(k, k.counter);
+        if (r.upset) {
+          k.state = 'upset'; k.t = 0; k.incident = r.incident;
+          k.spot = { x: k.x + 0.9, y: k.y + 0.9 };
+          scene.setMood(k.view, 'bad');
+        } else { k.state = 'leave'; k.t = 0; }
+      }
+    } else if (k.state === 'upset') {
+      stepTo(k, k.spot.x, k.spot.y, 1.2, dt);
+      if (k.t > REP.waitTimeout) {
+        reviews.onAbandoned(k.counter);
+        scene.setMood(k.view, null);
+        k.state = 'leave'; k.t = 0; k.angry = true;
+      }
     } else if (k.state === 'leave') {
       // уходим наружу: столкновения выключены, иначе клипается о границу зала
       stepTo(k, DOOR.x, HALL.h + 1.2, CUSTOMER.walkOff, dt, false);
@@ -183,7 +202,7 @@ function spawn(c) {
     x: DOOR.x, y: HALL.h + 0.6,
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
     view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
-    dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1,
+    dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1, waited: 0, incident: null,
   };
   customers.push(k);
   enqueue(k);
@@ -213,6 +232,24 @@ function queueIndex(k) {
 export function queueLen(counterId) {
   const q = queues.get(counterId);
   return q ? q.length : 0;
+}
+
+/** Недовольный клиент рядом с игроком — с ним можно разобраться. */
+export function upsetNear(r = 1.5) {
+  let best = null, bd = r;
+  for (const k of customers) {
+    if (k.state !== 'upset') continue;
+    const d = dist(player.x, player.y, k.x, k.y);
+    if (d < bd) { bd = d; best = k; }
+  }
+  return best;
+}
+
+/** Разбор закончен — клиент уходит довольным. */
+export function resolveUpset(k) {
+  if (!k || k.state !== 'upset') return;
+  scene.setMood(k.view, 'good');
+  k.state = 'leave'; k.t = 0;
 }
 
 /** Первый в очереди — только он обслуживается. */

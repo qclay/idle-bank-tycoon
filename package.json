@@ -22,6 +22,7 @@
     "pay": "node tools/pay.mjs",
     "route": "node tools/route.mjs",
     "district": "node tools/district.mjs",
-    "pace": "node tools/pace.mjs"
+    "pace": "node tools/pace.mjs",
+    "mood": "node tools/mood.mjs"
   }
 }

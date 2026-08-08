@@ -610,45 +610,10 @@ function drawFoe(g, a3, a4) {
 // ── Уличное движение ─────────────────────────────────────────────────────────
 
 const traffic = [];
-const CAR_COLORS = [0xE24A4A, 0x3B82F6, 0xFACC15, 0x10B981, 0xF97316, 0xE879F9, 0x94A3B8];
 
-function makeCar(color, vertical) {
-  const c = new Container();
-  const g = new Graphics();
-  const L = vertical ? 0.7 : 1.7, Wd = vertical ? 1.7 : 0.7;
-  isoBox(g, 0, 0, L, Wd, 0.02, 0.34, color);
-  isoBox(g, L * 0.22, Wd * 0.15, L * 0.78, Wd * 0.85, 0.36, 0.3, shade(color, 0.28));
-  isoBox(g, L * 0.26, Wd * 0.2, L * 0.74, Wd * 0.8, 0.66, 0.04, shade(color, -0.2));
-  c.addChild(g);
-  c.__len = vertical ? Wd : L;
-  items.addChild(c);
-  return c;
-}
-
-/** Машины по дороге и прохожие по тротуару — улица должна жить. */
+/** Прохожие и клиенты конкурента — улица должна жить. Машин нет намеренно:
+ *  на карте и так плотно, они забирали внимание у зала. */
 function buildTraffic() {
-  const W = HALL.w, H = HALL.h;
-  const w1 = STREET.walk, rd = STREET.road;
-  const lanes = [
-    { vertical: false, y: -(w1 + rd * 0.28), dir: 1 },
-    { vertical: false, y: -(w1 + rd * 0.72), dir: -1 },
-    { vertical: true,  x: -(w1 + rd * 0.28), dir: 1 },
-    { vertical: true,  x: -(w1 + rd * 0.72), dir: -1 },
-  ];
-  lanes.forEach((ln, li) => {
-    const n = 3;
-    for (let i = 0; i < n; i++) {
-      const color = CAR_COLORS[(li * 3 + i) % CAR_COLORS.length];
-      const view = makeCar(color, ln.vertical);
-      const span = ln.vertical ? H + w1 + rd + 6 : W + w1 + rd + 6;
-      traffic.push({
-        view, kind: 'car', vertical: ln.vertical, lane: ln,
-        t: (i / n) * span + li * 2.1, span,
-        speed: 2.6 + (li % 2) * 0.7 + i * 0.25,
-      });
-    }
-  });
-
   // клиенты конкурента: идут по дальнему тротуару и заходят к нему
   for (let i = 0; i < 5; i++) {
     traffic.push({
@@ -676,13 +641,7 @@ export function tickTraffic(dt) {
     t.t += t.speed * dt;
     if (t.t > t.span + 4) t.t -= t.span + 8;
     let x, y;
-    if (t.kind === 'car') {
-      const p0 = t.lane.dir > 0 ? t.t - 4 : t.span - t.t;
-      if (t.vertical) { x = t.lane.x; y = p0; } else { x = p0; y = t.lane.y; }
-      const pt = px(x, y, 0);
-      t.view.x = pt.x; t.view.y = pt.y;
-      t.view.zIndex = depth(x, y);
-    } else if (t.kind === 'foe') {
+    if (t.kind === 'foe') {
       // идут вдоль дальнего тротуара к двери конкурента и «заходят»
       const lane = -(STREET.walk + STREET.road + STREET.far * 0.5);
       const goal = FOE.door.x;
@@ -797,6 +756,30 @@ export function setServeRing(view, v) {
   g.moveTo(Math.cos(a0) * r, y + Math.sin(a0) * r);
   g.arc(0, y, r, a0, a1);
   g.stroke({ width: 4.5, color: 0x8FE642, cap: 'round' });
+}
+
+/** Значок настроения над клиентом: недовольство видно издалека. */
+export function setMood(view, kind) {
+  if (!view) return;
+  if (view.__mood) { view.removeChild(view.__mood); view.__mood.destroy(); view.__mood = null; }
+  if (!kind) return;
+  const g = new Graphics();
+  const y = -74, r = 13;
+  const bg = kind === 'bad' ? 0xE24A6A : 0x22C55E;
+  g.roundRect(-r - 3, y - r - 3, (r + 3) * 2, (r + 3) * 2, 9).fill({ color: 0xFFFFFF, alpha: 0.95 });
+  g.roundRect(-r - 3, y - r - 3, (r + 3) * 2, (r + 3) * 2, 9).stroke({ width: 2.4, color: bg });
+  g.poly([-4, y + r + 3, 4, y + r + 3, 0, y + r + 10]).fill(0xFFFFFF);
+  g.circle(-5, y - 4, 2.2).fill(bg);
+  g.circle(5, y - 4, 2.2).fill(bg);
+  if (kind === 'bad') {
+    g.moveTo(-6, y + 7); g.arc(0, y + 12, 7, Math.PI * 1.15, Math.PI * 1.85);
+    g.stroke({ width: 2.6, color: bg, cap: 'round' });
+  } else {
+    g.moveTo(-6, y + 3); g.arc(0, y - 2, 7, Math.PI * 0.15, Math.PI * 0.85);
+    g.stroke({ width: 2.6, color: bg, cap: 'round' });
+  }
+  view.addChild(g);
+  view.__mood = g;
 }
 
 /** Покачивание NPC — зал не должен выглядеть замершим. */

@@ -274,6 +274,10 @@ svg{width:100%;height:100%;display:block}
 .empty{text-align:center;color:var(--ink3);font-size:calc(12 * var(--du));font-weight:800;
   padding:calc(30 * var(--du)) calc(14 * var(--du));grid-column:1/-1}
 
+.stars{display:inline-flex;gap:calc(1 * var(--du));vertical-align:-.06em}
+.stars .st{color:rgba(27,18,54,.18);font-size:calc(13 * var(--du));line-height:1}
+.stars .st.on{color:#F6B93B}
+
 /* ═══ Метки в зале ══════════════════════════════════════════════════════════ */
 
 #worldUI{position:absolute;inset:0;z-index:12;pointer-events:none;overflow:hidden}

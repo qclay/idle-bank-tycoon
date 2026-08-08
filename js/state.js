@@ -9,7 +9,7 @@ export function emit(what) { for (const f of subs) f(what); }
 
 export function defaultState() {
   const counters = {};
-  COUNTERS.forEach((c, i) => { counters[c.id] = { open: i === 0, lvl: 1, cash: 0, clerk: 0 }; });
+  COUNTERS.forEach((c, i) => { counters[c.id] = { open: i === 0, lvl: 1, cash: 0, clerk: 0, morale: 1 }; });
   const atms = {};
   ATMS.forEach((a) => { atms[a.id] = { open: false, lvl: 1, cash: 0 }; });
   const ups = {};
@@ -36,6 +36,8 @@ export function defaultState() {
     daily: { date: '', tasks: [], allDone: false, counters: {} },
     achv: {},
 
+    rep: null,                 // репутация пункта в звёздах, заводится в reviews.js
+    reviews: [],               // лента отзывов
     district: null,            // гонка за район, заводится в district.js
     safe: { freeAt: 0 },
     boosts: {},

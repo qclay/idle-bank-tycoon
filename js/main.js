@@ -9,6 +9,7 @@ import * as game from './game.js';
 import * as ui from './ui.js';
 import * as screens from './screens.js';
 import * as district from './district.js';
+import * as reviews from './reviews.js';
 import { initTG, loadCloud, isTG, pay } from './tg.js';
 import { fmt } from './core.js';
 import * as fx from './fx.js';
@@ -48,6 +49,7 @@ async function boot() {
   bootState(raw);
   rollDaily();
   district.ensure();
+  reviews.ensure();
   if (!S.padPaid) S.padPaid = {};
 
   await scene.initScene(document.getElementById('stage'), prog);
@@ -88,6 +90,7 @@ function onReturn() {
   const away = (Date.now() - (S.lastSeen || Date.now())) / 1000;
   S.lastSeen = Date.now();
   district.ensure();
+  reviews.ensure();
   district.advanceOffline(away);
   if (away < 120) return;
   const p = game.computeOffline(away);
@@ -165,6 +168,16 @@ function onEvent(what) {
   if (screens.isOpen()) screens.refresh();
 }
 
+/** Подошли к недовольному клиенту — открываем разбор. */
+let incidentOpen = false;
+function checkUpset() {
+  if (incidentOpen || screens.isOpen()) return;
+  const k = actors.upsetNear();
+  if (!k) return;
+  incidentOpen = true;
+  screens.incident(k, () => { incidentOpen = false; });
+}
+
 // ── Цикл ─────────────────────────────────────────────────────────────────────
 
 let last = performance.now();
@@ -213,6 +226,8 @@ function loop(now) {
                             game.padState.id === p.id && game.padState.short);
   }
   district.tick(dt);
+  reviews.tick(dt);
+  checkUpset();
   scene.tickTraffic(dt);
   scene.pulsePads([...views.pads.values()], dt, game.padState.id);
   fx.tick(dt);
@@ -238,5 +253,5 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens, district };
+window.__game = { S, game, actors, scene, ui, screens, district, reviews };
 window.__balance = BAL;   // для инструментов замера темпа

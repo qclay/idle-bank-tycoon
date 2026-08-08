@@ -8,6 +8,7 @@ import { S, save, emit } from './state.js';
 import { clamp, dist } from './core.js';
 import * as scene from './scene.js';
 import * as fx from './fx.js';
+import * as reviews from './reviews.js';
 import {
   player, customers, clerks, runner, bagCap, clerkSpot, pickSpot, trayPos,
   atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids,
@@ -47,7 +48,7 @@ export function upgradeZone(z) {
 export function counterPay(def) {
   const st = S.counters[def.id];
   return def.base * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost()
-    * (1 + zoneBonus('pay'));
+    * (1 + zoneBonus('pay')) * reviews.payMult();
 }
 export function counterUpCost(def) {
   const st = S.counters[def.id];
@@ -82,7 +83,8 @@ export function clerkCost(def) {
 }
 export function clerkSpeed(def) {
   const st = S.counters[def.id];
-  return (STAFF.clerk.speedBase + STAFF.clerk.speedStep * (st.clerk - 1)) * (1 + zoneBonus('speed'));
+  return (STAFF.clerk.speedBase + STAFF.clerk.speedStep * (st.clerk - 1))
+    * (1 + zoneBonus('speed')) * reviews.morale(def.id);
 }
 export function runnerCost() { return Math.ceil(STAFF.runner.cost * STAFF.runner.grow ** S.runner); }
 
@@ -499,7 +501,8 @@ export function autoIncome() {
 function spawnSeconds() {
   const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
   return Math.max(CUSTOMER.minSpawn,
-    CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1) / (1 + zoneBonus('spawn')));
+    CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1)
+      / ((1 + zoneBonus('spawn')) * reviews.spawnMult()));
 }
 
 /** Оценка текущего дохода для интерфейса (учитывает ручную игру). */

@@ -1,0 +1,147 @@
+// Репутация пункта, настроение клиентов и разбор претензий.
+//
+// Клиент, которого что-то не устроило, не уходит молча: он останавливается
+// с недовольным значком и ждёт, пока вы подойдёте. Разобрались — репутация
+// растёт, ушёл неразобранным — падает и появляется плохой отзыв.
+
+import {
+  REP, INCIDENTS, REVIEW_NAMES, REVIEW_GOOD, REVIEW_BAD, REVIEW_SOLVED, REVIEW_MAX,
+  COUNTERS,
+} from './balance.js';
+import { S, save, emit } from './state.js';
+
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+export function ensure() {
+  if (S.rep == null) S.rep = REP.start;
+  if (!S.reviews) S.reviews = [];
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (st && st.morale == null) st.morale = 1;
+  }
+}
+
+export function stars() { return clamp(S.rep ?? REP.start, REP.min, REP.max); }
+
+/** Репутация выше трёх звёзд гонит поток клиентов, ниже — отпугивает. */
+export function spawnMult() { return 1 + (stars() - 3) * REP.spawnPerStar; }
+export function payMult() { return 1 + (stars() - 3) * REP.payPerStar; }
+
+export function morale(counterId) {
+  const st = S.counters[counterId];
+  return clamp(st?.morale ?? 1, REP.moraleMin, REP.moraleMax);
+}
+
+function addRep(d) {
+  S.rep = clamp((S.rep ?? REP.start) + d, REP.min, REP.max);
+}
+
+function addReview(kind, text, counterId) {
+  const c = COUNTERS.find((x) => x.id === counterId);
+  S.reviews.unshift({
+    id: Math.random().toString(36).slice(2, 8),
+    kind, text, who: pick(REVIEW_NAMES),
+    at: c ? c.name : '',
+    stars: kind === 'good' ? 5 : kind === 'solved' ? 4 : 1 + Math.floor(Math.random() * 2),
+    t: Date.now(),
+  });
+  if (S.reviews.length > REVIEW_MAX) S.reviews.length = REVIEW_MAX;
+}
+
+/** Клиента обслужили. Решаем, доволен он или будет претензия. */
+export function onServed(k, counterId) {
+  ensure();
+  const st = S.counters[counterId];
+  const waited = clamp(k.waited || 0, 0, 1);
+  const m = morale(counterId);
+  let p = REP.upsetBase + REP.upsetPerWait * waited + REP.upsetMoraleWeight * (1 - m);
+  if (!st?.clerk) p += 0.02;
+  if (Math.random() < clamp(p, 0, 0.6)) {
+    const inc = pick(INCIDENTS);
+    return { upset: true, incident: inc, counterId };
+  }
+  if (Math.random() < 0.14) { addRep(REP.goodDelta); addReview('good', pick(REVIEW_GOOD), counterId); emit('rep'); }
+  return { upset: false };
+}
+
+/** Клиент ушёл, так и не дождавшись разбора. */
+export function onAbandoned(counterId) {
+  ensure();
+  addRep(-REP.badDelta);
+  addReview('bad', pick(REVIEW_BAD), counterId);
+  emit('rep');
+  save();
+}
+
+// ── Разбор претензии ─────────────────────────────────────────────────────────
+
+/** Сколько стоит штраф или извинение с бонусом. */
+export function fineAmount(counterId, kind = 'fine') {
+  const c = COUNTERS.find((x) => x.id === counterId);
+  if (!c) return 0;
+  const st = S.counters[c.id];
+  const base = c.base * 1.125 ** ((st?.lvl || 1) - 1);
+  return Math.ceil(base * 60 * (kind === 'fine' ? REP.fineShare : REP.bonusShare));
+}
+
+/** Оштрафовать оператора: скандал гаснет, но человек работает хуже. */
+export function fine(counterId) {
+  ensure();
+  const st = S.counters[counterId];
+  const sum = fineAmount(counterId, 'fine');
+  S.cash += sum;                                   // штраф идёт в кассу
+  if (st) st.morale = clamp((st.morale ?? 1) + REP.finePenalty, REP.moraleMin, REP.moraleMax);
+  addRep(REP.fineDelta);
+  addReview('solved', pick(REVIEW_SOLVED), counterId);
+  S.stats.fines = (S.stats.fines || 0) + 1;
+  emit('rep'); save();
+  return { sum, morale: st?.morale ?? 1 };
+}
+
+/** Разобраться: иногда прав оператор, иногда клиент. */
+export function investigate(counterId, incident) {
+  ensure();
+  const st = S.counters[counterId];
+  let chance = REP.rightChance;
+  if (incident?.blame === 'client') chance += 0.25;
+  if (incident?.blame === 'staff') chance -= 0.25;
+  chance += ((st?.clerk || 0) * 0.015);
+  const staffRight = Math.random() < clamp(chance, 0.1, 0.9);
+  if (staffRight) {
+    if (st) st.morale = clamp((st.morale ?? 1) + REP.praiseBonus, REP.moraleMin, REP.moraleMax);
+    addRep(REP.solvedDelta * 0.6);
+    addReview('solved', pick(REVIEW_SOLVED), counterId);
+  } else {
+    addRep(-REP.badDelta * 0.4);
+    addReview('bad', pick(REVIEW_BAD), counterId);
+  }
+  S.stats.checks = (S.stats.checks || 0) + 1;
+  emit('rep'); save();
+  return { staffRight };
+}
+
+/** Извиниться и дать бонус: дорого, но репутация растёт сильнее всего. */
+export function apologize(counterId) {
+  ensure();
+  const sum = fineAmount(counterId, 'bonus');
+  if (S.cash < sum) return null;
+  S.cash -= sum;
+  addRep(REP.solvedDelta);
+  addReview('solved', pick(REVIEW_SOLVED), counterId);
+  S.stats.apologies = (S.stats.apologies || 0) + 1;
+  emit('rep'); save();
+  return { sum };
+}
+
+/** Мораль сама возвращается к норме. */
+export function tick(dt) {
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (!st || st.morale == null) continue;
+    if (st.morale < 1) st.morale = Math.min(1, st.morale + REP.moraleRecover * dt);
+    else if (st.morale > 1) st.morale = Math.max(1, st.morale - REP.moraleRecover * 0.5 * dt);
+  }
+}
+
+export function feed() { return S.reviews || []; }

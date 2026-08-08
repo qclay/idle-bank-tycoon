@@ -3,7 +3,7 @@
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE, DISTRICT,
+  DAILY_ALL, OFFLINE, DISTRICT, REP,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
@@ -13,6 +13,8 @@ import {
 } from './game.js';
 import { toast, haptic, setNav, setBadge } from './ui.js';
 import * as district from './district.js';
+import * as reviews from './reviews.js';
+import { resolveUpset } from './actors.js';
 
 const root = () => document.getElementById('winRoot');
 let cur = null;
@@ -102,7 +104,8 @@ export function staff() {
   setNav('staff');
   open({
     title: 'Бизнес',
-    tabs: [{ label: 'Стойки', render: staffView }, { label: 'Зоны', render: zonesView }],
+    tabs: [{ label: 'Стойки', render: staffView }, { label: 'Зоны', render: zonesView },
+            { label: 'Отзывы', render: reviewsView }],
     cap: () => {
       const cost = runnerCost();
       const lvl = S.runner;
@@ -223,6 +226,133 @@ function zonesView() {
     </div>
   </div>`).firstElementChild);
   return wrap;
+}
+
+// ── ОТЗЫВЫ И РЕПУТАЦИЯ ───────────────────────────────────────────────────────
+
+function starsRow(n) {
+  let out = '';
+  for (let i = 1; i <= 5; i++) {
+    out += `<span class="st ${i <= Math.round(n) ? 'on' : ''}">★</span>`;
+  }
+  return `<span class="stars">${out}</span>`;
+}
+
+function reviewsView() {
+  const wrap = document.createElement('div');
+  reviews.ensure();
+  const r = reviews.stars();
+  wrap.appendChild(h(`<div class="card" style="padding:calc(16 * var(--du))">
+    <div class="card__v" style="font-size:calc(30 * var(--du));gap:calc(8 * var(--du))">
+      ${r.toFixed(1)} ${starsRow(r)}</div>
+    <div class="card__sub">Поток клиентов ${r >= 3 ? '+' : ''}${Math.round((reviews.spawnMult() - 1) * 100)}%
+      · средний чек ${r >= 3 ? '+' : ''}${Math.round((reviews.payMult() - 1) * 100)}%</div>
+  </div>`).firstElementChild);
+
+  wrap.appendChild(h('<div class="sect">Настроение операторов</div>').firstElementChild);
+  const ml = document.createElement('div');
+  ml.className = 'list';
+  let any = false;
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (!st.open || !st.clerk) continue;
+    any = true;
+    const m = reviews.morale(c.id);
+    const tone = m < 0.8 ? 'tile--gold' : m > 1.05 ? 'tile--ok' : '';
+    ml.appendChild(h(`<div class="row row--plain">
+      <span class="tile ${tone}">${ic('i-staff', 'ic')}</span>
+      <div class="row__name">${esc(c.name)}</div>
+      <div class="row__sub">${m < 0.8 ? 'обижен после штрафа' : m > 1.05 ? 'воодушевлён' : 'работает ровно'}
+        · скорость ×${m.toFixed(2)}</div>
+      <div class="bar ${m < 0.8 ? 'bar--gold' : 'bar--ok'}"><i style="width:${Math.round(m / 1.25 * 100)}%"></i></div>
+    </div>`).firstElementChild);
+  }
+  if (!any) ml.innerHTML = '<div class="empty">Наймите операторов — у них появится настроение</div>';
+  wrap.appendChild(ml);
+
+  wrap.appendChild(h('<div class="sect">Что пишут клиенты</div>').firstElementChild);
+  const list = document.createElement('div');
+  list.className = 'list';
+  const feed = reviews.feed();
+  if (!feed.length) list.innerHTML = '<div class="empty">Отзывов пока нет</div>';
+  for (const v of feed.slice(0, 14)) {
+    const tone = v.kind === 'good' ? 'tile--ok' : v.kind === 'solved' ? 'tile--cyan' : 'tile--gold';
+    list.appendChild(h(`<div class="row row--plain">
+      <span class="tile ${tone}">${ic('i-staff', 'ic')}</span>
+      <div class="row__name">${esc(v.who)} ${starsRow(v.stars)}</div>
+      <div class="row__sub">${esc(v.text)}${v.at ? ` · ${esc(v.at)}` : ''}</div>
+    </div>`).firstElementChild);
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+// ── РАЗБОР ПРЕТЕНЗИИ ─────────────────────────────────────────────────────────
+
+export function incident(k, onClose) {
+  const c = COUNTERS.find((x) => x.id === k.counter);
+  const inc = k.incident || { text: 'Что-то пошло не так', blame: 'both' };
+  const fineSum = reviews.fineAmount(k.counter, 'fine');
+  const bonusSum = reviews.fineAmount(k.counter, 'bonus');
+  const m = reviews.morale(k.counter);
+
+  const done = (msg, tone) => {
+    resolveUpset(k);
+    close();
+    onClose?.();
+    if (msg) toast(msg);
+    haptic(tone || 'success');
+  };
+
+  const el = open({
+    title: 'Разбор',
+    render: () => h(`<div class="card" style="padding:calc(16 * var(--du))">
+        <div class="row__name" style="justify-content:center;font-size:calc(17 * var(--du))">
+          ${esc(inc.text)}</div>
+        <div class="card__sub" style="margin-top:calc(6 * var(--du))">
+          ${esc(c ? c.name : '')} · оператор ${S.counters[k.counter]?.clerk ? 'ур. ' + S.counters[k.counter].clerk : 'не нанят'}
+          · настроение ×${m.toFixed(2)}</div>
+      </div>
+      <div class="sect">Что делаем</div>
+      <div class="list" id="opts"></div>`),
+  });
+
+  const opts = el.el.querySelector('#opts');
+  const add = (icon, tone, name, sub, btnCls, btnT, btnP, onClick, off) => {
+    const row = h(`<div class="row">
+      <span class="tile ${tone}">${ic(icon, 'ic')}</span>
+      <div class="row__name">${name}</div>
+      <div class="row__sub">${sub}</div>
+      ${btn(btnCls + ' btn--row', btnT, btnP, 'i-coin', off)}
+    </div>`).firstElementChild;
+    if (!off) row.querySelector('button').addEventListener('click', onClick);
+    opts.appendChild(row);
+  };
+
+  add('i-staff', 'tile--gold', 'Оштрафовать', 'Скандал гаснет, но оператор обидится',
+      'btn--gold', 'Штраф', fmt(fineSum), () => {
+        const r = reviews.fine(k.counter);
+        done(`Штраф ${fmt(r.sum)} · настроение ×${r.morale.toFixed(2)}`, 'warning');
+      });
+
+  add('i-tasks', '', 'Разобраться', 'Может, клиент и не прав — тогда оператор воспрянет',
+      'btn--v', 'Выяснить', null, () => {
+        const r = reviews.investigate(k.counter, inc);
+        done(r.staffRight ? 'Оператор был прав — репутация выросла'
+                          : 'Виноват пункт. Клиент ушёл недовольным', r.staffRight ? 'success' : 'warning');
+      });
+
+  const canPay = S.cash >= bonusSum;
+  add('i-gift', 'tile--ok', 'Извиниться', 'Дороже всего, но репутация растёт сильнее',
+      'btn--ok', 'Бонус', fmt(bonusSum), () => {
+        const r = reviews.apologize(k.counter);
+        if (r) done(`Извинились · −${fmt(r.sum)}`, 'success');
+      }, !canPay);
+
+  // закрыли окно без решения — клиент остаётся ждать
+  const orig = el.el.querySelector('.win__close');
+  orig.addEventListener('click', () => onClose?.());
+  el.el.addEventListener('click', (e) => { if (e.target === el.el) onClose?.(); });
 }
 
 // ── ЗАДАНИЯ ──────────────────────────────────────────────────────────────────
@@ -576,4 +706,4 @@ export function updateBadges() {
   setBadge('staff', Math.min(9, st));
 }
 
-export const screens = { staff, tasks, safes, shop, offline, close, refresh, isOpen, updateBadges };
+export const screens = { staff, tasks, safes, shop, offline, incident, close, refresh, isOpen, updateBadges };
