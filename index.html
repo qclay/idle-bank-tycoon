@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d3557">
+<title>Idle Bank Tycoon</title>
+<link rel="stylesheet" href="css/app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <canvas id="cv"></canvas>
+  <div id="floorUI"></div>
+
+  <!-- Шапка -->
+  <header id="hud">
+    <div class="hud-row">
+      <button id="bankChip" class="chip chip-bank">
+        <span class="chip-flag">🏙️</span>
+        <span class="chip-body">
+          <b id="bankName">Городской банк</b>
+          <i id="bankCity">Старый центр</i>
+        </span>
+      </button>
+      <div class="hud-cur">
+        <div class="cur cur-cash"><i class="ic-cash"></i><b id="cash">$0</b></div>
+        <div class="cur-sub" id="income">$0/сек</div>
+      </div>
+      <button class="cur cur-gold" id="goldBtn"><i class="ic ic-gold"></i><b id="gold">0</b><em>+</em></button>
+    </div>
+    <div class="hud-row hud-row2">
+      <div class="lvl">
+        <span class="lvl-num" id="lvlNum">1</span>
+        <div class="lvl-bar"><i id="lvlFill"></i></div>
+      </div>
+      <div id="boostStrip"></div>
+      <div class="hud-tools">
+        <button class="tool" id="btnBoost" title="Бусты">⚡<i class="dot" hidden></i></button>
+        <button class="tool tool-share" id="btnRenov" title="Реновация"><i class="ic ic-share"></i><b id="shares">0</b></button>
+        <button class="tool" id="btnSettings" title="Настройки">⚙️</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Панель множителя апгрейда -->
+  <div id="stepbar">
+    <div class="steps" id="steps"></div>
+    <button class="btn btn-upall" id="upAll"><span>Улучшить всё</span><i id="upAllCost">—</i></button>
+  </div>
+
+  <!-- Нижняя навигация -->
+  <nav id="nav">
+    <button class="nav-btn is-active" data-tab="bank"><img src="assets/ui/tab_game.png" alt=""><span>Банк</span></button>
+    <button class="nav-btn" data-tab="tasks"><img src="assets/ui/tab_tasks.png" alt=""><span>Задания</span><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="chests"><img src="assets/ui/tab_presents.png" alt=""><span>Сейфы</span><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="staff"><img src="assets/ui/tab_friends.png" alt=""><span>Кадры</span><i class="badge" hidden></i></button>
+    <button class="nav-btn" data-tab="shop"><img src="assets/ui/tab_shop.png" alt=""><span>Магазин</span></button>
+  </nav>
+
+  <!-- Модальные окна -->
+  <div id="modalRoot"></div>
+  <div id="toasts"></div>
+  <div id="tutorial" hidden><div class="tut-box"><p id="tutText"></p><button id="tutOk">Понятно</button></div></div>
+</div>
+
+<div id="boot"><div class="boot-in"><div class="boot-logo">🏦</div><b>Idle Bank Tycoon</b><div class="boot-bar"><i></i></div></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
