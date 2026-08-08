@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 
 const URL = process.env.SHOT_URL || 'http://localhost:8199/index.html';
-const b = await chromium.launch();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=metal', '--enable-gpu'] });
 const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
 const errs = [];
 p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
@@ -17,7 +17,7 @@ const checks = [];
 const ok = (name, cond, extra = '') => checks.push({ name, pass: !!cond, extra });
 
 await p.goto(URL);
-await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
 await p.waitForTimeout(1200);
 
 // сцена и герой
@@ -174,7 +174,7 @@ ok('окно закрывается', !closed);
 // 11. Сейв
 await p.evaluate(() => { const s = window.__game; s.S.gold = 777; localStorage.setItem('idlebank2', JSON.stringify(s.S)); });
 await p.reload();
-await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
 await p.waitForTimeout(1200);
 const loaded = await p.evaluate(() => ({ gold: window.__game.S.gold, c1: window.__game.S.counters.c1.open }));
 ok('сейв читается после перезагрузки', loaded.gold === 777, `gold=${loaded.gold}`);

@@ -81,19 +81,28 @@ export function initPlayer() {
 export function movePlayer(dx, dy, dt) {
   const sp = playerSpeed();
   const len = Math.hypot(dx, dy);
-  player.moving = len > 0.02;
-  if (player.moving) {
-    const ux = dx / len, uy = dy / len;
-    player.x += ux * sp * dt;
-    player.y += uy * sp * dt;
+  // Разгон и торможение: раньше скорость включалась рывком и управление
+  // ощущалось деревянным.
+  const tx = len > 0.02 ? (dx / len) * sp * Math.min(1, len) : 0;
+  const ty = len > 0.02 ? (dy / len) * sp * Math.min(1, len) : 0;
+  const k = 1 - Math.exp(-16 * dt);
+  player.vx += (tx - player.vx) * k;
+  player.vy += (ty - player.vy) * k;
+  const v = Math.hypot(player.vx, player.vy);
+  player.moving = v > 0.12;
+  if (v > 0.001) {
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
     collide(player);
-    player.dir = isoDir(ux, uy);
-    S.stats.steps += sp * dt;
+    if (player.moving) player.dir = isoDir(player.vx, player.vy);
+    S.stats.steps += v * dt;
   }
+  player.t = (player.t || 0) + dt;
   // анимация
   if (player.view.__isSpine) {
     scene.setPlayerAnim(player.view, player.moving ? 'Walk' : 'Idle');
-    if (player.moving) scene.setPlayerFlip(player.view, (dx - dy) >= 0);
+    if (player.moving) scene.setPlayerFlip(player.view, (player.vx - player.vy) >= 0);
+    scene.bobPlayer(player.view, player.t, player.moving);
   } else {
     player.ft += dt * (player.moving ? 9 : 0);
     player.frame = Math.floor(player.ft) % 4;
@@ -121,7 +130,7 @@ function freeCounter() {
   const list = COUNTERS.filter((c) => S.counters[c.id].open);
   let best = null, bestN = 99;
   for (const c of list) {
-    const n = customers.filter((k) => k.counter === c.id && k.state !== 'leave').length;
+    const n = queueLen(c.id);
     if (n < CUSTOMER.maxQueue && n < bestN) { best = c; bestN = n; }
   }
   return best;
@@ -147,10 +156,10 @@ export function tickCustomers(dt, onServed) {
       const idx = queueIndex(k);
       const q = queueSpot(counterDef(k.counter), idx);
       stepTo(k, q.x, q.y, CUSTOMER.speed, dt);
-      if (k.t > CUSTOMER.patience) { k.state = 'leave'; k.angry = true; }
+      if (k.t > CUSTOMER.patience) { k.state = 'leave'; k.angry = true; dequeue(k); scene.setServeRing(k.view, -1); }
     } else if (k.state === 'serve') {
       k.serve += dt * k.serveSpeed;
-      if (k.serve >= CUSTOMER.serveTime) { onServed(k); k.state = 'leave'; k.t = 0; }
+      if (k.serve >= CUSTOMER.serveTime) { onServed(k); k.state = 'leave'; k.t = 0; dequeue(k); scene.setServeRing(k.view, -1); }
     } else if (k.state === 'leave') {
       if (stepTo(k, DOOR.x, DOOR.y + 0.6, CUSTOMER.walkOff, dt)) { kill(i); continue; }
     }
@@ -164,33 +173,54 @@ function spawn(c) {
     x: DOOR.x, y: DOOR.y + 0.5,
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
     view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
-    dir: 'nw', frame: 0, ft: 0, moving: true,
+    dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1,
   };
   customers.push(k);
+  enqueue(k);
 }
 
-function kill(i) { scene.removeView(customers[i].view); customers.splice(i, 1); }
+function kill(i) { dequeue(customers[i]); scene.removeView(customers[i].view); customers.splice(i, 1); }
 
 export function killAllCustomers() { while (customers.length) kill(0); }
 
+const queues = new Map();          // counterId → массив клиентов по порядку
+
+function enqueue(k) {
+  if (!queues.has(k.counter)) queues.set(k.counter, []);
+  queues.get(k.counter).push(k);
+}
+function dequeue(k) {
+  const q = queues.get(k.counter);
+  if (!q) return;
+  const i = q.indexOf(k);
+  if (i >= 0) q.splice(i, 1);
+}
 function queueIndex(k) {
-  const same = customers.filter((c) => c.counter === k.counter && c.state !== 'leave');
-  return Math.max(0, same.indexOf(k));
+  const q = queues.get(k.counter);
+  const i = q ? q.indexOf(k) : -1;
+  return i < 0 ? 0 : i;
+}
+export function queueLen(counterId) {
+  const q = queues.get(counterId);
+  return q ? q.length : 0;
 }
 
-/** Первый клиент в очереди, готовый к обслуживанию. */
+/** Первый в очереди — только он обслуживается. */
 export function frontCustomer(counterId) {
-  const q = customers.filter((c) => c.counter === counterId && (c.state === 'wait' || c.state === 'serve'));
-  return q[0] || null;
+  const q = queues.get(counterId);
+  if (!q || !q.length) return null;
+  const k = q[0];
+  return (k.state === 'wait' || k.state === 'serve') ? k : null;
 }
 
-function stepTo(k, tx, ty, sp, dt) {
+function stepTo(k, tx, ty, sp, dt, solid = true) {
   const dx = tx - k.x, dy = ty - k.y;
   const d = Math.hypot(dx, dy);
-  if (d < 0.06) { k.moving = false; return true; }
+  if (d < 0.08) { k.moving = false; return true; }
   const step = Math.min(d, sp * dt);
   k.x += (dx / d) * step;
   k.y += (dy / d) * step;
+  if (solid) collide(k);
   k.dir = isoDir(dx, dy);
   k.moving = true;
   return false;
@@ -200,6 +230,10 @@ function draw(k, dt) {
   k.ft += dt * (k.moving ? 8 : 0);
   k.frame = Math.floor(k.ft) % 4;
   scene.setCharFrame(k.view, k.dir, k.moving ? k.frame : 0);
+  if (k.state === 'serve') {
+    const v = Math.min(1, k.serve / CUSTOMER.serveTime);
+    if (Math.abs(v - k.ring) > 0.05) { k.ring = v; scene.setServeRing(k.view, v); }
+  } else if (k.ring >= 0) { k.ring = -1; scene.setServeRing(k.view, -1); }
   scene.placeActor(k.view, k.x, k.y);
 }
 
@@ -234,9 +268,12 @@ export function syncStaff() {
 
 export function tickClerks(dt) {
   for (const [id, a] of clerks) {
-    a.ft += dt * 3;
+    const busy = !!frontCustomer(id);
+    a.ft += dt * (busy ? 7 : 2.2);
     a.frame = Math.floor(a.ft) % 4;
-    scene.setCharFrame(a.view, 'se', 0);
+    scene.setCharFrame(a.view, 'se', busy ? a.frame : 0);
+    // лёгкое покачивание, чтобы зал не выглядел замершим
+    scene.bobChar(a.view, a.ft, busy);
     scene.placeActor(a.view, a.x, a.y);
   }
 }

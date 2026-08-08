@@ -9,6 +9,7 @@ import * as ui from './ui.js';
 import * as screens from './screens.js';
 import { initTG, loadCloud, isTG, pay } from './tg.js';
 import { fmt } from './core.js';
+import * as fx from './fx.js';
 
 const views = { counters: new Map(), atms: new Map(), piles: new Map(), pads: new Map() };
 let vaultView = null;
@@ -69,6 +70,7 @@ async function boot() {
   b.classList.add('hide');
   setTimeout(() => b.remove(), 450);
 
+  window.__ready = true;          // сигнал для тестов: сцена собрана
   requestAnimationFrame(loop);
   setInterval(() => save(), SAVE_EVERY);
   setInterval(() => screens.updateBadges(), 1000);
@@ -101,6 +103,7 @@ function rebuildObjects() {
     if (cur) scene.removeView(cur);
     const v = scene.buildCounter(c, open);
     v.__open = open;
+    if (open && cur) fx.popIn(v);       // новая стойка выпрыгивает на место
     views.counters.set(c.id, v);
     if (!views.piles.has(c.id)) views.piles.set(c.id, scene.buildCashPile());
   }
@@ -111,6 +114,7 @@ function rebuildObjects() {
     if (cur) scene.removeView(cur);
     const v = scene.buildAtm(a, open);
     v.__open = open;
+    if (open && cur) fx.popIn(v);
     views.atms.set(a.id, v);
     if (!views.piles.has(a.id)) views.piles.set(a.id, scene.buildCashPile());
   }
@@ -124,7 +128,9 @@ function syncPads() {
   for (const p of list) {
     seen.add(p.id);
     if (views.pads.has(p.id)) continue;
-    views.pads.set(p.id, scene.buildPad(p.x, p.y, p.w, p.h, p.color));
+    const v = scene.buildPad(p.x, p.y, p.w, p.h, p.color);
+    v.__id = p.id;
+    views.pads.set(p.id, v);
   }
   for (const [id, v] of views.pads) {
     if (!seen.has(id)) { scene.removeView(v); views.pads.delete(id); }
@@ -134,7 +140,12 @@ function syncPads() {
 function onEvent(what) {
   if (what === 'build') { rebuildObjects(); }
   if (what === 'upgrade') syncPads();
-  if (what === 'levelup') { ui.toast(`Уровень ${S.level}`); ui.haptic('success'); }
+  if (what === 'levelup') {
+    ui.toast(`Уровень ${S.level}`); ui.haptic('success');
+    fx.burst(actors.player.x, actors.player.y, 8, { size: 0.34 });
+    fx.punch(7);
+  }
+  if (what === 'build') ui.haptic('success');
   if (screens.isOpen()) screens.refresh();
 }
 
@@ -145,9 +156,15 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  const P = window.__prof;            // включается только из инструментов замера
+  const t0 = P ? performance.now() : 0;
 
   actors.movePlayer(ui.joy.dx, ui.joy.dy, dt);
-  actors.tickCustomers(dt, game.onServed);
+  actors.tickCustomers(dt, (k) => {
+    game.onServed(k);
+    const v = views.counters.get(k.counter);
+    if (v && S.settings.fx) fx.pulse(v, 0.06);
+  });
   actors.tickClerks(dt);
   actors.tickRunner(dt, game.takeFromSource, game.deposit);
   game.tick(dt, ui);
@@ -170,13 +187,26 @@ function loop(now) {
     scene.drawCashPile(pile, t.x, t.y, 0.1, st.cash / game.atmCap(a));
   }
 
-  scene.pulsePads([...views.pads.values()], dt);
-  scene.tickFx(dt);
+  const t1 = P ? performance.now() : 0;
+
+  // площадки: заполнение и подсветка активной
+  for (const p of game.pads()) {
+    const v = views.pads.get(p.id);
+    if (v) scene.setPadFill(v, (S.padPaid?.[p.id] || 0) / p.cost,
+                            game.padState.id === p.id && game.padState.short);
+  }
+  scene.pulsePads([...views.pads.values()], dt, game.padState.id);
+  fx.tick(dt);
   const ins = ui.hudInsets();
   scene.follow(actors.player.x, actors.player.y, ins.top, ins.bottom);
   scene.sortItems();
+  const t2 = P ? performance.now() : 0;
   ui.tickHud(dt);
   ui.tickWorldTags();
+  if (P) {
+    const t3 = performance.now();
+    P.sim += t1 - t0; P.draw += t2 - t1; P.ui += t3 - t2; P.n++;
+  }
 
   requestAnimationFrame(loop);
 }

@@ -7,6 +7,7 @@ import {
 import { S, save, emit } from './state.js';
 import { clamp, dist } from './core.js';
 import * as scene from './scene.js';
+import * as fx from './fx.js';
 import {
   player, customers, clerks, runner, bagCap, clerkSpot, pickSpot, trayPos,
   atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids,
@@ -68,19 +69,19 @@ export function pads() {
     const prev = COUNTERS[COUNTERS.indexOf(c) - 1];
     if (prev && !S.counters[prev.id].open) continue;      // по порядку
     out.push({ id: 'buy_' + c.id, kind: 'counter', ref: c, cost: c.cost,
-               x: c.x, y: c.y + 0.72, w: 2, h: 1, title: c.name, color: 0x5fd35f });
+               x: c.x + 0.3, y: c.y + 0.9, w: 1.4, h: 1.4, title: c.name, color: 0x5fd35f });
   }
   for (const a of ATMS) {
     if (S.atms[a.id].open) continue;
     out.push({ id: 'buy_' + a.id, kind: 'atm', ref: a, cost: a.cost,
-               x: a.x - 0.15, y: a.y + 0.68, w: 1.1, h: 1, title: a.name, color: 0x5fd35f });
+               x: a.x - 0.05, y: a.y + 0.75, w: 1.3, h: 1.3, title: a.name, color: 0x5fd35f });
   }
   for (const k of Object.keys(UPGRADES)) {
     const u = UPGRADES[k];
     const lvl = S.ups[k] || 0;
     if (lvl >= u.max) continue;
     out.push({ id: 'up_' + k, kind: 'up', ref: u, cost: upCost(k),
-               x: u.x, y: u.y, w: 1.2, h: 1.2, title: u.name, color: 0x63b9ff, up: k });
+               x: u.x, y: u.y, w: 1.4, h: 1.4, title: u.name, color: 0x63b9ff, up: k });
   }
   return out;
 }
@@ -89,11 +90,13 @@ if (!S.padPaid) S.padPaid = {};
 
 // ── Взаимодействие игрока ────────────────────────────────────────────────────
 
-const PICK_R = 1.05;
-const DROP_R = 1.15;
-const SERVE_R = 1.0;
+const PICK_R = 1.25;
+const DROP_R = 1.4;
+const SERVE_R = 1.35;
 
 let pickAcc = 0;
+let depAcc = 0;
+let depTick = 0;
 
 function addCarry(v) {
   const room = bagCap() - S.carry;
@@ -156,10 +159,21 @@ export function tick(dt, ui) {
 
   // 4. Сдача в хранилище
   if (S.carry > 0 && dist(player.x, player.y, VAULT.drop.x, VAULT.drop.y) < DROP_R) {
-    const rate = Math.max(bagCap() * 1.6, 25);
+    const rate = Math.max(bagCap() * 2.0, 30);
     const give = Math.min(S.carry, rate * dt);
     S.carry -= give;
     deposit(give);
+    depAcc += give;
+    depTick += dt;
+    if (S.settings.fx && depTick > 0.1) {
+      depTick = 0;
+      fx.coins(player.x, player.y - 0.25, VAULT.x + VAULT.w / 2, VAULT.y + VAULT.h, 1,
+               { size: 0.32, life: 0.3, arc: 40, toZ: 1.1 });
+    }
+    if (depAcc > 0 && (S.carry < 1e-6 || depAcc > bagCap() * 0.5)) {
+      if (S.settings.fx) fx.popText(VAULT.x + VAULT.w / 2, VAULT.y + VAULT.h, '+' + fmtShort(depAcc), 'cash');
+      depAcc = 0;
+    }
     if (S.carry < 1e-6) { S.carry = 0; }
   }
 
@@ -170,14 +184,17 @@ export function tick(dt, ui) {
   return null;
 }
 
+let grabTick = 0;
 function grab(st, from, dt) {
-  const rate = Math.max(bagCap() * 1.4, 20);
+  const rate = Math.max(bagCap() * 1.6, 22);
   const want = Math.min(st.cash, rate * dt);
   const got = addCarry(want);
   if (got <= 0) return;
   st.cash -= got;
-  if (S.settings.fx && Math.random() < dt * 14) {
-    scene.flyCoin(from.x, from.y, player.x, player.y - 0.2);
+  grabTick += dt;
+  if (S.settings.fx && grabTick > 0.1) {
+    grabTick = 0;
+    fx.coins(from.x, from.y, player.x, player.y - 0.25, 1, { size: 0.3, life: 0.28, arc: 30 });
   }
 }
 
@@ -201,25 +218,44 @@ export function takeFromSource(src, room) {
 
 // ── Пады: стоишь — платишь ───────────────────────────────────────────────────
 
+/** Активная площадка под игроком: её же подсвечивает интерфейс. */
+export const padState = { id: null, short: false };
+
+let coinTick = 0;
+
 function tickPads(dt, ui) {
   const list = pads();
+  padState.id = null; padState.short = false;
   for (const p of list) {
-    const inside = player.x > p.x - 0.35 && player.x < p.x + p.w + 0.35
-                && player.y > p.y - 0.35 && player.y < p.y + p.h + 0.35;
+    const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+    // Круг с запасом: по прямоугольнику игрок постоянно промахивался мимо зоны.
+    const r = Math.max(p.w, p.h) / 2 + 0.62;
+    if (dist(player.x, player.y, cx, cy) > r) continue;
     const paid = S.padPaid[p.id] || 0;
-    if (!inside) continue;
     if (paid >= p.cost) continue;
-    const rate = Math.max(p.cost / 1.6, 12);
+    padState.id = p.id;
+    if (S.cash < 1) { padState.short = true; continue; }
+    const rate = Math.max(p.cost / 2.2, 14);
     const pay = Math.min(rate * dt, p.cost - paid, S.cash);
-    if (pay <= 0) continue;
+    if (pay <= 0) { padState.short = true; continue; }
     S.cash -= pay;
     S.padPaid[p.id] = paid + pay;
+    // монеты сыплются из рук в площадку
+    coinTick += dt;
+    if (S.settings.fx && coinTick > 0.09) {
+      coinTick = 0;
+      fx.coins(player.x, player.y - 0.2, cx, cy, 1, { size: 0.26, life: 0.3, arc: 34, toZ: 0.05 });
+    }
     if (S.padPaid[p.id] >= p.cost - 1e-6) finishPad(p, ui);
   }
 }
 
 function finishPad(p, ui) {
   S.padPaid[p.id] = 0;
+  if (S.settings.fx) {
+    fx.burst(p.x + p.w / 2, p.y + p.h / 2, 8, { size: 0.32 });
+    fx.punch(9);
+  }
   if (p.kind === 'counter') {
     S.counters[p.ref.id].open = true;
     S.stats.opened++;
@@ -314,6 +350,19 @@ export function onServed(k) {
   S.stats.served++;
   bumpDaily('served');
   addXp(XP.perServe);
+  if (S.settings.fx) {
+    const t = trayPos(def);
+    fx.coins(k.x, k.y - 0.3, t.x, t.y, 2, { size: 0.26, life: 0.34, arc: 34, toZ: 1.0 });
+  }
+}
+
+/** Короткая запись суммы для всплывающих чисел. */
+function fmtShort(v) {
+  if (v < 1000) return String(Math.round(v));
+  const u = ['', 'K', 'M', 'B', 'T', 'aa', 'ab'];
+  let i = 0, n = v;
+  while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+  return (n >= 100 ? n.toFixed(0) : n.toFixed(1)).replace(/\.0$/, '') + u[i];
 }
 
 // ── Опыт и уровень ───────────────────────────────────────────────────────────

@@ -15,6 +15,9 @@
     "build": "node tools/build.mjs",
     "serve": "python3 -m http.server 8199 --directory docs",
     "shot": "node tools/shot.mjs",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "pads": "node tools/pads.mjs",
+    "perf": "node tools/perf.mjs",
+    "action": "node tools/action.mjs"
   }
 }

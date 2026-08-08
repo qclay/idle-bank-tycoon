@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 const URL = process.env.SHOT_URL || 'http://localhost:8199/index.html';
-const b = await chromium.launch();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=metal', '--enable-gpu'] });
 const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2 });
 p.on('pageerror', e => console.log('[pageerror]', e.message));
 p.on('requestfailed', r => console.log('[failed]', r.url()));

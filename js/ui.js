@@ -40,7 +40,7 @@ export function setNav(tab) {
 
 function bindJoystick() {
   let id = null, ox = 0, oy = 0;
-  const R = () => 52 * du();
+  const R = () => 58 * du();
 
   const start = (x, y, pid) => {
     id = pid; ox = x; oy = y;
@@ -56,7 +56,7 @@ function bindJoystick() {
     if (d > r) { dx = (dx / d) * r; dy = (dy / d) * r; }
     els.knob.style.left = `${ox + dx}px`; els.knob.style.top = `${oy + dy}px`;
     const k = Math.min(1, d / r);
-    if (d < 6) { joy.dx = 0; joy.dy = 0; return; }
+    if (d < 5) { joy.dx = 0; joy.dy = 0; return; }
     // экранное направление → мировое (обратная изометрия)
     const nx = dx / (d || 1), ny = dy / (d || 1);
     const wx = (ny / (1 / 2) + nx) / 2;
@@ -79,9 +79,11 @@ function bindJoystick() {
     if (id !== e.pointerId) return;
     move(e.clientX, e.clientY);
   });
-  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+  // pointerleave не слушаем: палец заходит на HUD и управление обрывалось
+  for (const ev of ['pointerup', 'pointercancel']) {
     els.joy.addEventListener(ev, (e) => { if (id === e.pointerId) end(); });
   }
+  window.addEventListener('blur', end);
 }
 
 // ── HUD ──────────────────────────────────────────────────────────────────────
@@ -139,9 +141,12 @@ export function tickWorldTags() {
     t.classList.toggle('wtag--done', S.cash < left && paid === 0);
 
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-    const near = dist(player.x, player.y, cx, cy) < 4.2;
+    // Рядом — полная подпись, издалека — компактный ценник: иначе таблички
+    // наезжают друг на друга и закрывают зал.
+    const near = dist(player.x, player.y, cx, cy) < 2.9;
     t.classList.toggle('is-far', !near);
-    const s = scene.screenOf(cx, cy, 0.1);
+    // рядом поднимаем повыше, иначе табличка накрывает героя
+    const s = scene.screenOf(cx, cy, near ? 1.35 : 0.4);
     t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
   }
   // Две подсказки по ситуации: где обслуживать и куда нести выручку.
@@ -158,6 +163,7 @@ export function tickWorldTags() {
 }
 
 function hint(id, text, x, y, seen) {
+  // подсказки всегда компактные
   seen.add(id);
   let t = tags.get(id);
   if (!t) {
@@ -169,7 +175,7 @@ function hint(id, text, x, y, seen) {
   }
   const tt = t.querySelector('.wtag__t');
   if (tt.textContent !== text) tt.textContent = text;
-  const s = scene.screenOf(x, y, 0.1);
+  const s = scene.screenOf(x, y, 0.75);
   t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
 }
 

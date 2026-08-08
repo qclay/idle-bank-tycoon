@@ -80,6 +80,7 @@ img{display:block}
   box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.22);
   display:flex;align-items:center;gap:calc(5 * var(--du));padding:0 calc(8 * var(--du));
   transition:opacity .2s}
+#carry{pointer-events:none}
 #carry img{width:calc(16 * var(--du));height:calc(16 * var(--du))}
 #carry .cbar{flex:1;height:calc(8 * var(--du));border-radius:calc(4 * var(--du));
   background:rgba(0,0,0,.35);overflow:hidden}
@@ -286,29 +287,38 @@ img{display:block}
 .wtag{position:absolute;transform:translate(-50%,-100%);text-align:center;white-space:nowrap;
   will-change:transform;transition:opacity .2s}
 /* далёкие пады сворачиваются в компактную метку, чтобы не заставлять экран */
-.wtag.is-far{opacity:.72}
-.wtag.is-far .wtag__bar{display:none}
-.wtag.is-far .wtag__t{font-size:calc(8.5 * var(--du))}
-.wtag.is-far .wtag__p{font-size:calc(10 * var(--du))}
-.wtag.is-far .wtag__sign{padding:calc(3 * var(--du)) calc(8 * var(--du))}
+/* издалека остаётся только ценник — компактно и не загораживает зал */
+.wtag.is-far{opacity:.8}
+.wtag.is-far .wtag__bar,.wtag.is-far .wtag__t{display:none}
+.wtag.is-far .wtag__p{font-size:calc(10.5 * var(--du));margin-top:0}
+.wtag.is-far .wtag__p img{width:calc(12 * var(--du));height:calc(12 * var(--du))}
+.wtag.is-far .wtag__sign{padding:calc(2 * var(--du)) calc(7 * var(--du));border-radius:calc(7 * var(--du))}
 .wtag__sign{display:inline-flex;flex-direction:column;align-items:center;
-  padding:calc(5 * var(--du)) calc(11 * var(--du));border-radius:calc(9 * var(--du));
-  background:linear-gradient(180deg,rgba(48,28,10,.86),rgba(30,16,4,.86));
-  box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.22)}
-.wtag__t{color:#FFE9A8;font-size:calc(10 * var(--du));text-transform:uppercase;line-height:1.1}
-.wtag__p{display:flex;align-items:center;gap:calc(4 * var(--du));color:#fff;
-  font-size:calc(12 * var(--du));margin-top:calc(2 * var(--du))}
-.wtag__p img{width:calc(15 * var(--du));height:calc(15 * var(--du))}
+  padding:calc(4 * var(--du)) calc(9 * var(--du));border-radius:calc(9 * var(--du));
+  background:linear-gradient(180deg,rgba(48,28,10,.9),rgba(28,15,4,.9));
+  box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.24)}
+.wtag__t{color:#FFE9A8;font-size:calc(9.5 * var(--du));text-transform:uppercase;line-height:1.1;
+  max-width:calc(120 * var(--du));overflow:hidden;text-overflow:ellipsis}
+.wtag__p{display:flex;align-items:center;gap:calc(3 * var(--du));color:#fff;
+  font-size:calc(11.5 * var(--du));margin-top:calc(1 * var(--du))}
+.wtag__p img{width:calc(14 * var(--du));height:calc(14 * var(--du))}
 .wtag--buy .wtag__sign{background:linear-gradient(180deg,rgba(20,86,18,.9),rgba(10,58,10,.9))}
 .wtag--done .wtag__sign{opacity:.6}
 .wtag--hint .wtag__sign{background:linear-gradient(180deg,#FFD786,#D28D32);
   box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.5);
   animation:hintPulse 1.1s ease-in-out infinite}
-.wtag--hint .wtag__t{color:#5A3410;font-size:calc(11 * var(--du))}
+.wtag--hint .wtag__t{color:#5A3410;font-size:calc(10 * var(--du));display:block}
+.wtag--hint .wtag__sign{padding:calc(4 * var(--du)) calc(10 * var(--du))}
 @keyframes hintPulse{0%,100%{transform:translateY(0)}50%{transform:translateY(calc(-4 * var(--du)))}}
 .wtag__bar{width:calc(70 * var(--du));height:calc(6 * var(--du));border-radius:calc(3 * var(--du));
   background:rgba(0,0,0,.4);overflow:hidden;margin-top:calc(4 * var(--du))}
 .wtag__bar i{display:block;height:100%;background:linear-gradient(180deg,#8FE642,#4EA414);width:0}
+
+/* всплывающие числа над сценой */
+.fxnum{position:absolute;left:0;top:0;transform-origin:50% 100%;white-space:nowrap;pointer-events:none;
+  color:#FFE9A8;font-size:calc(17 * var(--du));font-weight:900;
+  text-shadow:0 calc(2 * var(--du)) 0 rgba(40,20,4,.85), 0 0 calc(8 * var(--du)) rgba(0,0,0,.5)}
+.fxnum--cash{color:#9BE85A}
 
 /* ═══ Всплывающие сообщения ════════════════════════════════════════════════ */
 

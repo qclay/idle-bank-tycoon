@@ -8,6 +8,7 @@ import { Spine } from '@esotericsoftware/spine-pixi-v8';
 import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
 
 import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
+import * as fx from './fx.js';
 import { HALL, VAULT, COUNTERS, ATMS, UPGRADES } from './balance.js';
 
 export const INK = 0x3f2b18;
@@ -16,7 +17,7 @@ let app = null;
 export let world = null;      // контейнер мира (двигается камерой)
 let ground = null;            // статичный пол и стены
 let items = null;             // объекты и актёры, сортируются по глубине
-let fx = null;                // эффекты поверх
+let fxLayer = null;           // эффекты поверх
 export const cam = { x: 0, y: 0, scale: 1 };
 const tex = {};
 
@@ -109,11 +110,12 @@ export async function initScene(host, onProgress = () => {}) {
   ground = new Container();
   items = new Container();
   items.sortableChildren = true;
-  fx = new Container();
-  world.addChild(ground, items, fx);
+  fxLayer = new Container();
+  world.addChild(ground, items, fxLayer);
   app.stage.addChild(world);
 
   buildGround();
+  fx.initFx(fxLayer, document.getElementById('worldUI'), tex.coin, screenOf);
   fitCamera();
   window.addEventListener('resize', () => fitCamera(insets.top, insets.bottom));
   onProgress(1);
@@ -313,53 +315,89 @@ export function buildAtm(def, opened) {
 export function buildPad(x, y, w, h, color) {
   const c = new Container();
   const g = new Graphics();
-  isoRhomb(g, x, y, x + w, y + h, 0.008, color, { alpha: 0.42 });
-  isoRhomb(g, x + 0.1, y + 0.1, x + w - 0.1, y + h - 0.1, 0.009, shade(color, 0.35), { alpha: 0.5 });
-  isoRhomb(g, x, y, x + w, y + h, 0.01, 0, { alpha: 0, ow: 3, oc: shade(color, -0.25), oa: 0.9 });
-  // стрелка «встань сюда»
-  const cx = x + w / 2, cy = y + h / 2;
-  const a = px(cx, cy - 0.16, 0.012), b2 = px(cx - 0.2, cy + 0.06, 0.012), d = px(cx + 0.2, cy + 0.06, 0.012);
-  g.poly([a.x, a.y, b2.x, b2.y, d.x, d.y]).fill({ color: 0xffffff, alpha: 0.75 });
+  isoRhomb(g, x, y, x + w, y + h, 0.008, 0x1b2740, { alpha: 0.32 });
+  isoRhomb(g, x, y, x + w, y + h, 0.009, 0, { alpha: 0, ow: 3.5, oc: color, oa: 0.95 });
   c.addChild(g);
+
+  const fill = new Graphics();
+  c.addChild(fill);
+
+  // стрелка «встань сюда»
+  const arrow = new Graphics();
+  const cx = x + w / 2, cy = y + h / 2;
+  const a = px(cx, cy - 0.2, 0.02), b2 = px(cx - 0.24, cy + 0.08, 0.02), d = px(cx + 0.24, cy + 0.08, 0.02);
+  arrow.poly([a.x, a.y, b2.x, b2.y, d.x, d.y]).fill({ color: 0xffffff, alpha: 0.9 });
+  c.addChild(arrow);
   c.zIndex = depth(x, y) - 500;      // пады всегда под актёрами
   items.addChild(c);
-  c.__g = g;
-  c.__t = 0;
+  Object.assign(c, { __box: { x, y, w, h, color }, __fill: fill, __arrow: arrow, __v: -1, __short: null, __t: 0 });
   return c;
 }
 
-/** Лёгкая пульсация падов, чтобы взгляд их находил. */
-export function pulsePads(list, dt) {
-  for (const c of list) {
-    c.__t = (c.__t || 0) + dt;
-    c.alpha = 0.82 + Math.sin(c.__t * 3) * 0.18;
+/** Заполнение площадки по мере оплаты + состояние «денег не хватает». */
+export function setPadFill(pad, ratio, short) {
+  if (!pad || (Math.abs(ratio - pad.__v) < 0.02 && pad.__short === short)) return;
+  pad.__v = ratio; pad.__short = short;
+  const { x, y, w, h, color } = pad.__box;
+  const g = pad.__fill;
+  g.clear();
+  if (short) {
+    isoRhomb(g, x, y, x + w, y + h, 0.011, 0xE23A0F, { alpha: 0.3 });
+  }
+  if (ratio > 0.001) {
+    const k = Math.min(1, ratio);
+    const iw = w * k, ih = h * k;
+    const ox = x + (w - iw) / 2, oy = y + (h - ih) / 2;
+    isoRhomb(g, ox, oy, ox + iw, oy + ih, 0.012, color, { alpha: 0.85 });
   }
 }
 
-/** Стопка наличных на стойке. */
+/** Пульсация площадок: под ногами — ярче, чтобы было видно, что она работает. */
+export function pulsePads(list, dt, activeId) {
+  for (const c of list) {
+    c.__t = (c.__t || 0) + dt;
+    const active = c.__id && c.__id === activeId;
+    const base = active ? 1 : 0.8;
+    c.alpha = base + Math.sin(c.__t * (active ? 7 : 3)) * (active ? 0.08 : 0.16);
+    if (c.__arrow) c.__arrow.y = -Math.abs(Math.sin(c.__t * (active ? 7 : 3))) * (active ? 7 : 4);
+  }
+}
+
+/** Стопка наличных: 12 спрайтов создаются один раз и только прячутся/показываются.
+ *  Раньше стопка пересобиралась каждый кадр — от этого сцена дёргалась. */
+const PILE_MAX = 12;
 export function buildCashPile() {
   const c = new Container();
+  c.__coins = [];
+  for (let i = 0; i < PILE_MAX; i++) {
+    const s = new Sprite(tex.coin);
+    s.anchor.set(0.5);
+    s.scale.set(0.23);
+    s.visible = false;
+    c.addChild(s);
+    c.__coins.push(s);
+  }
+  c.__n = -1;
+  c.__key = '';
   items.addChild(c);
   return c;
 }
 
 export function drawCashPile(cont, x, y, z, ratio) {
-  cont.removeChildren();
-  if (ratio <= 0.001) { cont.visible = false; return; }
-  cont.visible = true;
-  const rows = clamp(Math.ceil(ratio * 4), 1, 4);
-  for (let r = 0; r < rows; r++) {
-    const n = r === rows - 1 ? clamp(Math.round(ratio * 3), 1, 3) : 3;
-    for (let i = 0; i < n; i++) {
-      const s = new Sprite(tex.coin);
-      s.anchor.set(0.5, 0.5);
-      const p = px(x + i * 0.16, y, z + r * 0.09);
-      s.x = p.x; s.y = p.y;
-      s.scale.set(0.22);
-      cont.addChild(s);
-    }
+  const n = ratio <= 0.001 ? 0 : clamp(Math.round(ratio * PILE_MAX), 1, PILE_MAX);
+  const key = `${x}|${y}|${z}`;
+  if (cont.__n === n && cont.__key === key) return;
+  cont.__n = n; cont.__key = key;
+  cont.visible = n > 0;
+  for (let i = 0; i < PILE_MAX; i++) {
+    const s = cont.__coins[i];
+    s.visible = i < n;
+    if (!s.visible) continue;
+    const row = Math.floor(i / 3), col = i % 3;
+    const p = px(x + (col - 1) * 0.17, y, z + row * 0.085);
+    s.x = p.x; s.y = p.y;
   }
-  cont.zIndex = depth(x + 0.5, y + 0.5) + 1;
+  cont.zIndex = depth(x, y) + 1;
 }
 
 // ── Актёры ───────────────────────────────────────────────────────────────────
@@ -428,9 +466,39 @@ export function makeCharView(tint = 0) {
   s.scale.set(0.3);
   if (tint) s.tint = tint;
   c.addChild(s);
+  const ring = new Graphics();
+  ring.visible = false;
+  c.addChild(ring);
   c.__spr = s;
+  c.__ring = ring;
+  c.__ringV = -1;
   items.addChild(c);
   return c;
+}
+
+/** Кольцо прогресса обслуживания над клиентом. v < 0 — спрятать. */
+export function setServeRing(view, v) {
+  const g = view.__ring;
+  if (!g) return;
+  if (v < 0) { g.visible = false; view.__ringV = -1; return; }
+  g.visible = true;
+  view.__ringV = v;
+  g.clear();
+  const r = 11, y = -66;
+  g.circle(0, y, r + 2.5).fill({ color: 0x1d2b3f, alpha: 0.78 });
+  // Дугу обязательно начинаем с moveTo: иначе Pixi тянет линию из начала пути
+  // и над клиентом появляется длинная зелёная палка.
+  const a0 = -Math.PI / 2, a1 = a0 + Math.PI * 2 * Math.min(0.999, v);
+  g.moveTo(Math.cos(a0) * r, y + Math.sin(a0) * r);
+  g.arc(0, y, r, a0, a1);
+  g.stroke({ width: 4.5, color: 0x8FE642, cap: 'round' });
+}
+
+/** Покачивание NPC — зал не должен выглядеть замершим. */
+export function bobChar(view, t, active) {
+  const s = view.__spr;
+  if (!s) return;
+  s.y = active ? -Math.abs(Math.sin(t * 5)) * 3 : -Math.abs(Math.sin(t * 1.6)) * 1.4;
 }
 
 export function setCharFrame(view, dir, frame) {
@@ -454,6 +522,13 @@ export function setPlayerFlip(view, faceRight) {
   b.scale.x = faceRight ? k : -k;
 }
 
+/** Лёгкое покачивание на ходу — без него герой «плывёт» по полу. */
+export function bobPlayer(view, t, moving) {
+  const b = view.__body;
+  if (!b) return;
+  b.y = moving ? -Math.abs(Math.sin(t * 11)) * 4 : 0;
+}
+
 /** Поставить актёра в тайл. */
 export function placeActor(view, x, y, z = 0) {
   const p = px(x, y, z);
@@ -462,32 +537,6 @@ export function placeActor(view, x, y, z = 0) {
 }
 
 export function removeView(v) { v?.parent?.removeChild(v); v?.destroy?.({ children: true }); }
-
-// ── Летящие монетки и всплывашки ─────────────────────────────────────────────
-
-const flyers = [];
-
-export function flyCoin(fromX, fromY, toX, toY, onDone) {
-  const s = new Sprite(tex.coin);
-  s.anchor.set(0.5);
-  s.scale.set(0.26);
-  const a = px(fromX, fromY, 0.9), b = px(toX, toY, 0.9);
-  s.x = a.x; s.y = a.y;
-  fx.addChild(s);
-  flyers.push({ s, ax: a.x, ay: a.y, bx: b.x, by: b.y, t: 0, life: 0.42, onDone });
-}
-
-export function tickFx(dt) {
-  for (let i = flyers.length - 1; i >= 0; i--) {
-    const f = flyers[i];
-    f.t += dt;
-    const k = Math.min(1, f.t / f.life);
-    f.s.x = f.ax + (f.bx - f.ax) * k;
-    f.s.y = f.ay + (f.by - f.ay) * k - Math.sin(k * Math.PI) * 40;
-    f.s.scale.set(0.26 * (1 - k * 0.35));
-    if (k >= 1) { f.onDone?.(); f.s.destroy(); flyers.splice(i, 1); }
-  }
-}
 
 // ── Камера ───────────────────────────────────────────────────────────────────
 
@@ -543,10 +592,10 @@ export function follow(x, y, hudTop = 0, hudBottom = 0) {
   if (roomH <= viewBot - viewTop) ty = viewTop + ((viewBot - viewTop) - roomH) / 2 - b.top * s;
   else ty = clamp(ty, viewBot - b.bottom * s, viewTop - b.top * s);
 
-  cam.x += (tx - cam.x) * 0.18;
-  cam.y += (ty - cam.y) * 0.18;
-  world.x = Math.round(cam.x);
-  world.y = Math.round(cam.y);
+  cam.x += (tx - cam.x) * 0.22;
+  cam.y += (ty - cam.y) * 0.22;
+  world.x = Math.round(cam.x + fx.shake.x);
+  world.y = Math.round(cam.y + fx.shake.y);
 }
 
 /** Экранная позиция тайла — нужна DOM-подсказкам над падами. */

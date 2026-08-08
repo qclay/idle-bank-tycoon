@@ -33,7 +33,7 @@ export const UPGRADES = {
   bag:   { id: 'bag',   name: 'Сумка',    desc: 'Больше наличных за раз', x: 1,  y: 4.3,
            cost: 260,  grow: 1.55, step: 6,   base: 12,  max: 60, icon: './assets/barn/cargo.png' },
   boots: { id: 'boots', name: 'Ботинки',  desc: 'Скорость ходьбы',        x: 3.4, y: 4.3,
-           cost: 420,  grow: 1.62, step: 0.22, base: 3.1, max: 30, icon: './assets/ui/energy.png' },
+           cost: 420,  grow: 1.62, step: 0.26, base: 4.3, max: 30, icon: './assets/ui/energy.png' },
   vault: { id: 'vault', name: 'Хранилище',desc: 'Множитель дохода',       x: 4.4, y: 1.3,
            cost: 1500, grow: 1.7,  step: 0.12, base: 1,   max: 40, icon: './assets/ui/hud_coin.png' },
 };
@@ -44,14 +44,14 @@ export const COUNTER_UP = { costRatio: 0.55, grow: 1.16, payGrow: 1.14, speedGro
 // ─── Клиенты ─────────────────────────────────────────────────────────────────
 
 export const CUSTOMER = {
-  spawnBase: 3.2,        // секунд между клиентами при одной стойке
+  spawnBase: 2.1,        // секунд между клиентами при одной стойке
   spawnPerCounter: 0.62, // во столько раз чаще с каждой открытой стойкой
   minSpawn: 0.45,
-  serveTime: 1.6,        // сколько секунд обслуживается один клиент
+  serveTime: 1.35,       // сколько секунд обслуживается один клиент
   patience: 46,          // через сколько секунд без обслуживания уходит
   maxQueue: 3,           // очередь к одной стойке
-  speed: 2.0,
-  walkOff: 1.9,
+  speed: 2.4,
+  walkOff: 2.3,
 };
 
 // ─── Персонал ────────────────────────────────────────────────────────────────

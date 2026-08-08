@@ -6,14 +6,14 @@ const OUT = process.env.SHOT_DIR || '/private/tmp/shots';
 const URL = process.env.SHOT_URL || 'http://localhost:8199/index.html';
 mkdirSync(OUT, { recursive: true });
 
-const b = await chromium.launch();
+const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=metal', '--enable-gpu'] });
 const p = await b.newPage({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 const errs = [];
 p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
 p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
 
 await p.goto(URL);
-await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
 await p.waitForTimeout(1500);
 const shot = (n) => p.screenshot({ path: `${OUT}/${n}.png` });
 
@@ -34,7 +34,7 @@ await p.evaluate(() => {
 });
 await p.evaluate(() => window.__game.S).catch(() => {});
 await p.reload();
-await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
+await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
 await p.waitForTimeout(400);
 await p.evaluate(() => { window.__game.actors.player.x = 9; window.__game.actors.player.y = 4.6; });
 await p.waitForTimeout(4000);
