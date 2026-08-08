@@ -2,7 +2,7 @@
 // комнаты совместной игры и отзывы от модели.
 
 import { verifyInitData } from './auth.js';
-import { review, reviewBatch } from './ai.js';
+import { review, reviewBatch, promo } from './ai.js';
 export { Room } from './room.js';
 
 const CORS = {
@@ -117,7 +117,9 @@ export default {
       const u = await who(req, env);
       if (!u) return json({ error: 'подпись не сошлась' }, 401);
       const body = await req.json().catch(() => ({}));
-      const r = Array.isArray(body.list) ? await reviewBatch(env, body.list) : await review(env, body);
+      const r = body.promo ? await promo(env, body.promo)
+        : Array.isArray(body.list) ? await reviewBatch(env, body.list)
+        : await review(env, body);
       return json(r);
     }
 

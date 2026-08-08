@@ -3,7 +3,7 @@
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE, DISTRICT, REP,
+  DAILY_ALL, OFFLINE, DISTRICT, REP, SMM,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
@@ -15,6 +15,8 @@ import { toast, haptic, setNav, setBadge } from './ui.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
 import { resolveUpset } from './actors.js';
+import * as coop from './coop.js';
+import * as smm from './smm.js';
 
 const root = () => document.getElementById('winRoot');
 let cur = null;
@@ -667,6 +669,73 @@ function shopView() {
   return wrap;
 }
 
+// ── ВМЕСТЕ ───────────────────────────────────────────────────────────────────
+// Вход по коду, а не только по ссылке: ссылка-приглашение работает лишь когда
+// у бота настроено главное мини-приложение, и до тех пор друг просто попадал
+// в чат с ботом. Код работает всегда.
+
+export function together() {
+  open({ title: 'Вместе', render: coopView });
+}
+
+function coopView() {
+  const wrap = document.createElement('div');
+  const code = coop.myCode();
+  const away = coop.visiting();
+
+  if (!code) {
+    wrap.appendChild(h('<div class="empty">Совместная игра работает только внутри Telegram — там у пункта появляется код.</div>').firstElementChild);
+    return wrap;
+  }
+
+  if (away) {
+    const who = coop.others().find((p) => p.id === coop.coop.roomId);
+    wrap.appendChild(h(`<div class="note note--v">
+      <b>Вы в гостях${who ? ` у ${esc(who.name)}` : ''}</b>
+      <span>${coop.coop.hostOnline ? 'Помогайте: вставайте за стойку и на площадки — заработок и стройка идут хозяину.' : 'Хозяин сейчас не в сети, пункт замер. Загляните позже.'}</span>
+    </div>`).firstElementChild);
+    const back = h(btn('btn--v btn--wide', 'Вернуться в свой пункт', null)).firstElementChild;
+    back.addEventListener('click', () => { window.__goHome?.(); close(); });
+    wrap.appendChild(back);
+    return wrap;
+  }
+
+  wrap.appendChild(h('<div class="sect">Код вашего пункта</div>').firstElementChild);
+  const codeBox = h(`<div class="codebox"><b>${esc(code)}</b>${ic('i-box', 'ic')}</div>`).firstElementChild;
+  codeBox.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(code); toast('Код скопирован'); }
+    catch { toast('Продиктуйте код другу: ' + code); }
+    haptic('light');
+  });
+  wrap.appendChild(codeBox);
+
+  const share = h(btn('btn--v btn--wide', 'Позвать друга ссылкой', null)).firstElementChild;
+  share.addEventListener('click', () => window.__invite?.());
+  wrap.appendChild(share);
+
+  const list = coop.others();
+  wrap.appendChild(h(`<div class="empty">${list.length
+    ? `Сейчас в зале: ${list.map((p) => esc(p.name)).join(', ')}`
+    : 'Пока вы в пункте один'}</div>`).firstElementChild);
+
+  wrap.appendChild(h('<div class="sect">Зайти к другу</div>').firstElementChild);
+  const row = h(`<div class="joinrow">
+    <input class="joinrow__i" inputmode="numeric" placeholder="Код пункта друга" maxlength="16">
+    <button class="btn btn--v joinrow__b"><span class="btn__t">Зайти</span></button>
+  </div>`).firstElementChild;
+  const input = row.querySelector('input');
+  row.querySelector('button').addEventListener('click', () => {
+    const v = input.value.replace(/\D/g, '');
+    if (!v) { toast('Введите код друга'); return; }
+    if (v === code) { toast('Это код вашего же пункта'); return; }
+    window.__visit?.(v);
+    close();
+  });
+  wrap.appendChild(row);
+  wrap.appendChild(h('<div class="empty">Код — это номер пункта. Друг диктует его вам, вы вводите здесь.</div>').firstElementChild);
+  return wrap;
+}
+
 // ── СОЦСЕТЬ ──────────────────────────────────────────────────────────────────
 // Всё, что о пункте думает город: рейтинг, лента отзывов и настроение смены.
 // Сюда же стекаются тексты, написанные моделью по реальным событиям в зале.
@@ -674,9 +743,11 @@ function shopView() {
 export function social(sub) {
   const m = open({
     title: 'Соцсеть',
-    tabs: [{ label: 'Отзывы', render: feedView }, { label: 'Смена', render: shiftView }],
+    tabs: [{ label: 'Лента', render: feedView }, { label: 'Продвижение', render: promoView },
+           { label: 'Смена', render: shiftView }],
   });
-  if (sub === 'shift') m.el.querySelectorAll('.win__tab')[1]?.click();
+  if (sub === 'promo') m.el.querySelectorAll('.win__tab')[1]?.click();
+  if (sub === 'shift') m.el.querySelectorAll('.win__tab')[2]?.click();
   S.seenReviews = (S.reviews || []).length;
   save();
   return m;
@@ -715,20 +786,88 @@ function feedView() {
 
   const list = reviews.feed();
   if (!list.length) {
-    wrap.appendChild(h('<div class="empty">Отзывов пока нет. Обслужите первых клиентов — город заговорит.</div>').firstElementChild);
+    wrap.appendChild(h('<div class="empty">В ленте пока тихо. Обслужите первых клиентов — город заговорит.</div>').firstElementChild);
     return wrap;
   }
-  wrap.appendChild(h('<div class="sect">Что пишут</div>').firstElementChild);
-  for (const v of list) {
-    wrap.appendChild(h(`<div class="post post--${v.kind}">
-      <div class="post__ava">${esc(v.who.slice(0, 1))}</div>
-      <div class="post__b">
-        <div class="post__h"><b>${esc(v.who)}</b><span class="post__t">${ago(v.t)}</span></div>
-        <div class="post__stars">${starRow(v.stars, 11)}</div>
-        <div class="post__x">${esc(v.text)}</div>
-        ${v.at ? `<div class="post__at">${esc(v.at)}</div>` : ''}
+  wrap.appendChild(h('<div class="sect">Лента квартала</div>').firstElementChild);
+  for (const v of list) wrap.appendChild(postCard(v));
+  return wrap;
+}
+
+const POST_ICON = { news: 'i-bolt', smm: 'i-shop' };
+
+/** Карточка ленты. Отзыв, новость района и пост пункта различаются шапкой,
+ *  но живут одним потоком — это и делает экран лентой, а не списком жалоб. */
+function postCard(v) {
+  const news = v.kind === 'news', promo = v.kind === 'smm';
+  const head = news || promo
+    ? `<span class="post__ava post__ava--${v.kind}">${ic(POST_ICON[v.kind], 'ic')}</span>`
+    : `<div class="post__ava">${esc(v.who.slice(0, 1))}</div>`;
+  const meta = promo
+    ? `<div class="post__likes">${ic('i-heart')}${fmt(v.likes || 0)}</div>`
+    : (news ? '' : `<div class="post__stars">${starRow(v.stars, 11)}</div>`);
+  return h(`<div class="post post--${v.kind}">
+    ${head}
+    <div class="post__b">
+      <div class="post__h"><b>${esc(v.who)}</b><span class="post__t">${ago(v.t)}</span></div>
+      ${meta}
+      <div class="post__x">${esc(v.text)}</div>
+      ${v.at ? `<div class="post__at">${esc(v.at)}</div>` : ''}
+    </div>
+  </div>`).firstElementChild;
+}
+
+// ── Продвижение ──────────────────────────────────────────────────────────────
+
+function promoView() {
+  const wrap = document.createElement('div');
+  const lvl = smm.level();
+  const reach = Math.round((1 + SMM.reachPerLvl * lvl - 1) * 100);
+  const left = Math.round(smm.boostLeft());
+
+  wrap.appendChild(h(`<div class="promo">
+    <div class="promo__h">
+      <span class="promo__ic">${ic('i-shop', 'ic')}</span>
+      <div>
+        <b>${lvl ? esc(smm.title()) : 'Страницу никто не ведёт'}</b>
+        <i>${lvl ? `Охват пункта +${reach}% постоянно` : 'Пункт живёт только на сарафанном радио'}</i>
       </div>
+    </div>
+    ${lvl ? `<div class="promo__row">
+      <span>Пост каждые ${dur(smm.postEvery())}</span>
+      <span>${left ? `Пост работает ещё ${dur(left)}` : 'Ждём следующий пост'}</span>
+    </div>` : ''}
+  </div>`).firstElementChild);
+
+  if (left) {
+    wrap.appendChild(h(`<div class="note note--v">
+      <b>Пост разлетелся</b>
+      <span>Пока он в ленте, клиентов приходит на ${Math.round(SMM.boost * 100)}% больше.</span>
     </div>`).firstElementChild);
+  }
+
+  if (smm.maxed()) {
+    wrap.appendChild(h('<div class="empty">Дальше некуда: о пункте пишет весь городской паблик.</div>').firstElementChild);
+  } else {
+    const price = smm.cost();
+    const next = SMM.titles[Math.min(lvl + 1, SMM.titles.length - 1)];
+    const b = h(btn('btn--v btn--wide', lvl ? `Нанять: ${next}` : `Нанять: ${next}`, fmt(price), 'i-coin',
+                    S.cash < price)).firstElementChild;
+    b.addEventListener('click', () => {
+      const r = smm.hire();
+      if (!r) { toast('Не хватает денег'); return; }
+      haptic('success');
+      toast(`${smm.title()} взялся за страницу`);
+      refresh();
+    });
+    wrap.appendChild(b);
+    wrap.appendChild(h(`<div class="empty">Каждый уровень поднимает постоянный охват на ${Math.round(SMM.reachPerLvl * 100)}% и учащает посты.</div>`).firstElementChild);
+  }
+
+  const posts = reviews.feed().filter((v) => v.kind === 'smm').slice(0, 6);
+  if (posts.length) {
+    wrap.appendChild(h('<div class="sect">Последние посты</div>').firstElementChild);
+    for (const v of posts) wrap.appendChild(postCard(v));
   }
   return wrap;
 }

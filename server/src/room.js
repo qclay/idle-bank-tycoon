@@ -29,7 +29,8 @@ export class Room {
     const name = url.searchParams.get('name') || 'Игрок';
     const room = url.searchParams.get('room') || '';
     if (!id) return new Response('нет игрока', { status: 400 });
-    // Комната названа по владельцу пункта: он и есть хост.
+    // Комната названа по владельцу пункта, и считать мир может только он.
+    // Гость чужой бизнес не симулирует: иначе он бы решал, что там происходит.
     if (room && room === id) this.host = id;
 
     const pair = new WebSocketPair();
@@ -46,7 +47,6 @@ export class Room {
     server.addEventListener('close', () => this.drop(server));
     server.addEventListener('error', () => this.drop(server));
 
-    if (!this.host) this.host = id;                 // некому считать — берёт первый
     this.send(server, { t: 'hello', you: id, host: this.host, players: this.list(), snap: this.snap });
     this.broadcast({ t: 'join', player: this.peers.get(server) }, server);
     this.start();
@@ -80,12 +80,12 @@ export class Room {
     const p = this.peers.get(ws);
     this.peers.delete(ws);
     if (p) this.broadcast({ t: 'left', id: p.id });
-    // ушёл хост — мир считать некому, назначаем следующего и говорим об этом
+    // Ушёл хозяин — пункт замирает. Передавать его гостю нельзя: это чужой
+    // бизнес, и решать за него никто, кроме владельца, не должен.
     if (p && p.id === this.host) {
-      const next = this.peers.values().next().value;
-      this.host = next ? next.id : null;
+      this.host = null;
       this.snap = null;
-      if (this.host) this.broadcast({ t: 'host', id: this.host });
+      this.broadcast({ t: 'host', id: null });
     }
     if (!this.peers.size) this.stop();
   }

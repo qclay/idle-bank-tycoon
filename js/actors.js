@@ -5,6 +5,7 @@ import { S } from './state.js';
 import { isoDir, clamp, dist } from './core.js';
 import * as scene from './scene.js';
 import * as reviews from './reviews.js';
+import * as smm from './smm.js';
 import { REP } from './balance.js';
 
 // ── Геометрия объектов ───────────────────────────────────────────────────────
@@ -130,7 +131,7 @@ export function spawnRate() {
     const zs = S.zones?.[z.id];
     if (zs?.open && z.effect === 'spawn') coffee += z.step * zs.lvl;
   }
-  t /= (1 + coffee) * reviews.spawnMult();
+  t /= (1 + coffee) * reviews.spawnMult() * smm.reachMult();
   if (boostOn('rush')) t /= 3;
   return Math.max(CUSTOMER.minSpawn, t);
 }
@@ -169,16 +170,16 @@ export function tickCustomers(dt, onServed) {
       // Чем дольше очередь стоит, тем мрачнее лица: это видно с другого конца
       // зала и подсказывает, куда бежать.
       const m = reviews.waitMood(k.waited);
-      scene.setMood(k.view, m === 2 ? 'bad' : m === 1 ? 'meh' : null);
+      k.mood = m === 2 ? 'bad' : m === 1 ? 'meh' : null;
       if (k.t > CUSTOMER.patience) {
         // Ушёл, не дождавшись выдачи: заказ не забран, отзыв будет злым.
         reviews.onWalkedOut(k.counter);
-        scene.setMood(k.view, 'bad');
+        k.mood = 'bad';
         k.state = 'leave'; k.angry = true; k.t = 0;
         dequeue(k); scene.setServeRing(k.view, -1);
       }
     } else if (k.state === 'serve') {
-      if (k.waited < REP.moodAt) scene.setMood(k.view, null);
+      if (k.waited < REP.moodAt) k.mood = null;
       k.serve += dt * k.serveSpeed;
       if (k.serve >= CUSTOMER.serveTime) {
         onServed(k);
@@ -187,14 +188,14 @@ export function tickCustomers(dt, onServed) {
         if (r.upset) {
           k.state = 'upset'; k.t = 0; k.incident = r.incident;
           k.spot = { x: k.x + 0.9, y: k.y + 0.9 };
-          scene.setMood(k.view, 'bad');
+          k.mood = 'upset';
         } else { k.state = 'leave'; k.t = 0; }
       }
     } else if (k.state === 'upset') {
       stepTo(k, k.spot.x, k.spot.y, 1.2, dt);
       if (k.t > REP.waitTimeout) {
         reviews.onAbandoned(k.counter);
-        scene.setMood(k.view, null);
+        k.mood = null;
         k.state = 'leave'; k.t = 0; k.angry = true;
       }
     } else if (k.state === 'leave') {
@@ -213,7 +214,7 @@ function spawn(c) {
     x: DOOR.x, y: HALL.h + 0.6,
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
     view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
-    dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1, waited: 0, incident: null,
+    dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1, waited: 0, incident: null, mood: null,
   };
   customers.push(k);
   enqueue(k);
@@ -259,7 +260,7 @@ export function upsetNear(r = 1.5) {
 /** Разбор закончен — клиент уходит довольным. */
 export function resolveUpset(k) {
   if (!k || k.state !== 'upset') return;
-  scene.setMood(k.view, 'good');
+  k.mood = 'good';
   k.state = 'leave'; k.t = 0;
 }
 
@@ -307,11 +308,16 @@ export function showGhosts(list) {
     if (!v) { v = { view: scene.makeCharView(TINTS[Math.abs(hash(g.id)) % TINTS.length]), ft: 0 }; ghosts.set(g.id, v); }
     v.ft += 0.12;
     scene.setCharFrame(v.view, g.dir, g.moving ? Math.floor(v.ft) % 4 : 0);
-    if (g.state === 'upset') scene.setMood(v.view, 'bad');
+    v.x = g.x; v.y = g.y; v.id = g.id;
+    v.mood = g.state === 'upset' ? 'upset' : null;
+    v.remote = true;
     scene.placeActor(v.view, g.x, g.y);
   }
   for (const [id, v] of ghosts) if (!live.has(id)) { scene.removeView(v.view); ghosts.delete(id); }
 }
+/** Клиенты, которых показывает гость: своих он не считает, но видит чужих. */
+export function ghostList() { return [...ghosts.values()]; }
+
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 
 // ── Персонал ─────────────────────────────────────────────────────────────────

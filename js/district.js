@@ -6,6 +6,7 @@
 
 import { DISTRICT } from './balance.js';
 import { S, save, emit } from './state.js';
+import * as reviews from './reviews.js';
 
 /** Номер текущей недели — простое ведро по 7 суток, без часовых поясов. */
 export function weekNo(t = Date.now()) { return Math.floor(t / (7 * 86400e3)); }
@@ -50,6 +51,8 @@ function closeWeek() {
   next.losses = d.losses + (won ? 0 : 1);
   next.streak = won ? d.streak + 1 : 0;
   next.foeLvl = Math.max(1, d.foeLvl + (won ? 1 : -1));
+  newsWeek(res);
+  if (next.foeLvl > d.foeLvl) newsFoeLevel(next.foeLvl);
   next.pending = res;
   S.district = next;
   emit('district');
@@ -93,6 +96,37 @@ export function tick(dt) {
   d.pace = Math.max(d.paceEma, (d.pace || 0) * decay);
 
   d.foe += foeRate() * dt;
+  newsTick(d, dt);
+}
+
+// ── Новости района ───────────────────────────────────────────────────────────
+// Гонка должна быть слышна, а не только видна в цифрах: смена лидера и рывки
+// соперника попадают в ленту как городские новости.
+
+let newsCool = 0;
+function newsTick(d, dt) {
+  newsCool = Math.max(0, newsCool - dt);
+  const lead = d.my >= d.foe;
+  if (d.lastLead == null) { d.lastLead = lead; return; }
+  if (lead === d.lastLead || newsCool > 0) return;
+  d.lastLead = lead;
+  newsCool = 180;                       // не чаще раза в три минуты
+  const my = Math.floor(d.my), foe = Math.floor(d.foe);
+  reviews.addNews(lead
+    ? `Ваш пункт вышел вперёд в гонке квартала: ${my} против ${foe} у «${DISTRICT.name}»`
+    : `«${DISTRICT.name}» обошёл вас: ${foe} против ваших ${my}`, 'Гонка за район');
+}
+
+/** Итог недели — тоже новость, её видно в ленте вместе с отзывами. */
+export function newsWeek(res) {
+  reviews.addNews(res.won
+    ? `Квартал за вами: ${res.my} выдач против ${res.foe} у «${DISTRICT.name}»`
+    : `Неделя за «${DISTRICT.name}»: ${res.foe} выдач против ваших ${res.my}`, 'Итог недели');
+}
+
+/** Соперник подтянулся — об этом пишут раньше, чем вы это заметите. */
+export function newsFoeLevel(lvl) {
+  reviews.addNews(`«${DISTRICT.name}» расширился: у соседей теперь ${lvl}-я смена и больше касс`, 'Конкурент');
 }
 
 /** Пока игрока не было, соперник работал — но вполсилы. */

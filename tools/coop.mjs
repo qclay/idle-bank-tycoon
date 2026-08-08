@@ -322,15 +322,36 @@ ok('чужой прогресс не остался у гостя', home.c2 === 
    `у хозяина c2=${mineBefore}, у гостя после возврата c2=${home.c2}`);
 ok('дома игрок снова считает свой мир', home.host);
 
-// ── 8. Хозяин вышел — мир считает оставшийся ─────────────────────────────────
+// ── 8. Вход по коду, без ссылки ──────────────────────────────────────────────
+// Ссылка-приглашение работает только при настроенном мини-приложении, поэтому
+// зайти к другу можно и по номеру пункта.
 
-await guest.evaluate(() => window.__game.coop.join(
-  window.Telegram.WebApp.initData, String(910001), String(910002)));
-await guest.waitForTimeout(1500);
+await guest.evaluate((code) => window.__visit(code), String(HOST.id));
+await guest.waitForTimeout(2200);
+const byCode = await guest.evaluate(() => ({
+  room: window.__game.coop.coop.roomId,
+  visiting: window.__game.coop.visiting(),
+  sees: window.__game.coop.others().map((p) => p.id),
+  hostOnline: window.__game.coop.coop.hostOnline,
+}));
+ok('по коду друга пускает в его пункт', byCode.room === String(HOST.id) && byCode.visiting,
+   `комната ${byCode.room}`);
+ok('и там снова видно хозяина', byCode.sees.includes(String(HOST.id)) && byCode.hostOnline,
+   JSON.stringify(byCode.sees));
+
+// ── 9. Хозяин вышел — чужой пункт замирает ───────────────────────────────────
+// Передавать бизнес гостю нельзя: считать его может только владелец.
+
 await host.close();
-await guest.waitForTimeout(2500);
-const promoted = await guest.evaluate(() => window.__game.coop.coop.host);
-ok('после ухода хозяина мир продолжает считать оставшийся', promoted);
+await guest.waitForTimeout(3000);
+const dormant = await guest.evaluate(() => ({
+  host: window.__game.coop.coop.host,
+  online: window.__game.coop.coop.hostOnline,
+  chip: document.getElementById('coopChip')?.textContent || '',
+}));
+ok('гость не начинает считать чужой пункт', !dormant.host);
+ok('гостю сказано, что хозяин не в сети', !dormant.online && /не в сети/.test(dormant.chip),
+   dormant.chip);
 
 await guest.screenshot({ path: `${OUT}/coop-guest.png` });
 

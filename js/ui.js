@@ -1,6 +1,6 @@
 // HUD, джойстик, подсказки над падами, тосты, нижняя навигация.
 
-import { fmt, du, clamp } from './core.js';
+import { fmt, du, clamp, plural } from './core.js';
 import { S, save } from './state.js';
 import { xpForLevel } from './balance.js';
 import { pads, padState } from './game.js';
@@ -8,9 +8,8 @@ import { COUNTERS, VAULT, DISTRICT } from './balance.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
 import { coop, others, visiting } from './coop.js';
-import { clerkSpot } from './actors.js';
-import { player } from './actors.js';
-import { bagCap } from './actors.js';
+import { clerkSpot, player, bagCap } from './actors.js';
+import * as actors from './actors.js';
 import { dist } from './core.js';
 import * as scene from './scene.js';
 
@@ -144,6 +143,7 @@ const tags = new Map();
 export function tickWorldTags() {
   tickFoeMarker();
   tickNameTags();
+  tickMoods();
   const list = pads();
   const seen = new Set();
   for (const p of list) {
@@ -213,6 +213,48 @@ function hint(id, text, x, y, seen) {
 
 export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
 
+// ── Настроение клиентов ──────────────────────────────────────────────────────
+// Значок над головой — не картинка, а кнопка: по нему и разбирают претензию.
+// Бегать через весь зал к каждому недовольному было мучением.
+
+const moodEls = new Map();
+const FACE = { upset: 'i-sad', bad: 'i-sad', meh: 'i-meh', good: 'i-happy' };
+
+function tickMoods() {
+  const live = new Set();
+  const list = [...actors.customers, ...actors.ghostList()];
+  for (const k of list) {
+    if (!k.mood) continue;
+    live.add(k.id);
+    let el = moodEls.get(k.id);
+    if (!el) {
+      el = document.createElement('button');
+      el.className = 'bub';
+      el.innerHTML = '<span class="bub__f"><svg><use/></svg></span>';
+      el.addEventListener('click', (e) => { e.stopPropagation(); onMoodTap(k); });
+      els.worldUI.appendChild(el);
+      moodEls.set(k.id, el);
+    }
+    if (el.__m !== k.mood) {
+      el.__m = k.mood;
+      el.className = `bub bub--${k.mood}`;
+      el.querySelector('use').setAttribute('href', `#${FACE[k.mood] || 'i-meh'}`);
+    }
+    const p = scene.screenOf(k.x, k.y, 2.0);
+    el.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%,-100%)`;
+  }
+  for (const [id, el] of moodEls) if (!live.has(id)) { el.remove(); moodEls.delete(id); }
+}
+
+function onMoodTap(k) {
+  haptic('light');
+  if (k.remote) { toast('Разбирается хозяин пункта'); return; }
+  if (k.mood === 'upset') { window.__incident?.(k); return; }
+  const c = COUNTERS.find((x) => x.id === k.counter);
+  const sec = Math.round((k.t || 0));
+  toast(`Ждёт ${sec} ${plural(sec, 'секунду', 'секунды', 'секунд')}${c ? ` · ${c.name}` : ''}`);
+}
+
 // ── Подписи над гостями ──────────────────────────────────────────────────────
 
 const nameTags = new Map();
@@ -242,10 +284,7 @@ export function showCoop() {
     el = document.createElement('button');
     el.id = 'coopChip';
     el.className = 'coopchip';
-    el.addEventListener('click', () => {
-      if (visiting()) window.__goHome?.();
-      else window.__invite?.();
-    });
+    el.addEventListener('click', () => window.__openTab('coop'));
     document.getElementById('hud').appendChild(el);
   }
   const list = others();
@@ -253,7 +292,9 @@ export function showCoop() {
   const ic = (id) => `<span class="ic"><svg><use href="#i-${id}"/></svg></span>`;
   if (away) {
     const host = list.find((p) => p.id === coop.roomId);
-    el.innerHTML = `${ic('staff')}В гостях${host ? ` у ${host.name}` : ''} · выйти`;
+    el.innerHTML = coop.hostOnline
+      ? `${ic('staff')}В гостях${host ? ` у ${host.name}` : ''}`
+      : `${ic('staff')}Хозяин не в сети`;
   } else if (list.length) {
     el.innerHTML = `${ic('staff')}${list.map((p) => p.name).join(', ')} помогает`;
   } else {

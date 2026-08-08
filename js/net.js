@@ -150,6 +150,13 @@ export async function aiReview(ctx) {
   return r?.text || null;
 }
 
+/** Пост для страницы пункта — его пишет тот же сервер, ключ модели у него. */
+export async function aiPromo(ctx) {
+  if (net.guest || net.visiting) return null;
+  const r = await call('/review', { method: 'POST', body: JSON.stringify({ promo: ctx }) }, 1);
+  return r?.text || null;
+}
+
 export async function aiReviewBatch(list) {
   if (net.guest) return null;
   const r = await call('/review', { method: 'POST', body: JSON.stringify({ list }) }, 1);

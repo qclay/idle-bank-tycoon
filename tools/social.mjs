@@ -71,7 +71,7 @@ await p.screenshot({ path: `${OUT}/social-feed.png` });
 
 // ── 3. Вкладка смены ─────────────────────────────────────────────────────────
 
-await p.evaluate(() => document.querySelectorAll('.win__tab')[1].click());
+await p.evaluate(() => document.querySelectorAll('.win__tab')[2].click());
 await p.waitForTimeout(500);
 const shift = await p.evaluate(() => ({
   rows: [...document.querySelectorAll('.mrow')].map((e) => ({
@@ -119,7 +119,7 @@ const stages = await p.evaluate(() => new Promise((res) => {
     const { CUSTOMER } = window.__balance;
     k.state = 'wait'; k.t = CUSTOMER.patience * steps[i];
     setTimeout(() => {
-      out.push({ waited: +(k.waited || 0).toFixed(2), mood: k.view.__moodK ?? null });
+      out.push({ waited: +(k.waited || 0).toFixed(2), mood: k.mood ?? null });
       i++; step();
     }, 260);
   };
@@ -201,6 +201,34 @@ if (BOT) {
 } else {
   ok('тексты отзывов приходят от модели', false, 'нет BOT_TOKEN — проверка пропущена');
 }
+
+// ── 8. Разбор открывается нажатием на значок, а не подходом ─────────────────
+
+const bubble = await p.evaluate(() => new Promise((res) => {
+  const { actors, S } = window.__game;
+  S.counters.c1.open = true;
+  const k = actors.customers[0];
+  actors.player.x = 2.5; actors.player.y = 3.6;      // игрок в другом конце зала
+  k.state = 'upset'; k.t = 0; k.mood = 'upset';
+  k.incident = { id: 'wrong', text: 'Выдали не тот заказ', blame: 'staff' };
+  k.spot = { x: k.x, y: k.y };
+  setTimeout(() => {
+    const el = document.querySelector('.bub--upset');
+    res({ есть: !!el, далеко: Math.hypot(actors.player.x - k.x, actors.player.y - k.y) > 4 });
+  }, 400);
+}));
+ok('над недовольным появляется кнопка-значок', bubble.есть && bubble.далеко,
+   bubble.далеко ? 'игрок в другом конце зала' : 'игрок рядом');
+
+await p.click('.bub--upset');
+await p.waitForTimeout(600);
+const dialog = await p.evaluate(() => ({
+  title: document.querySelector('.win__head h2')?.textContent || '',
+  buttons: [...document.querySelectorAll('.win .btn .btn__t')].map((e) => e.textContent),
+}));
+ok('нажатие открывает разбор, подходить не нужно', /Претензия|Разбор|заказ/i.test(dialog.title)
+   || dialog.buttons.length > 0, `${dialog.title} · ${dialog.buttons.join(', ')}`);
+await p.screenshot({ path: `${OUT}/bubble-tap.png` });
 
 for (const c of checks) console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.info ? '  — ' + c.info : ''}`);
 const bad = checks.filter((c) => !c.pass).length;

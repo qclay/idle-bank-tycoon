@@ -10,6 +10,7 @@ import * as ui from './ui.js';
 import * as screens from './screens.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
+import * as smm from './smm.js';
 import { initTG, isTG, pay, initDataRaw, startParam, invite } from './tg.js';
 import * as coop from './coop.js';
 import * as net from './net.js';
@@ -22,6 +23,11 @@ const views = { counters: new Map(), atms: new Map(), zones: new Map(), piles: n
 let vaultView = null;
 
 window.__openTab = (tab, sub) => {
+  if (tab === 'coop') {
+    if (screens.isOpen()) screens.close(true);
+    screens.together();
+    return;
+  }
   if (tab === 'social') {
     if (screens.isOpen()) screens.close(true);
     screens.social(sub);
@@ -78,6 +84,7 @@ async function boot() {
   rollDaily();
   district.ensure();
   reviews.ensure();
+  smm.ensure();
   if (!S.padPaid) S.padPaid = {};
 
   await scene.initScene(document.getElementById('stage'), prog);
@@ -102,6 +109,14 @@ async function boot() {
     const room = sp.startsWith('room_') ? sp.slice(5) : net.net.player.id;
     coop.join(initDataRaw(), room, net.net.player.id);
     window.__invite = () => invite(net.net.player.id, BOT_NAME);
+    // Зайти к другу по коду: комната названа номером его пункта.
+    window.__visit = (code) => {
+      if (!code || String(code) === String(net.net.player.id)) return;
+      coop.leave();
+      coop.join(initDataRaw(), String(code), String(net.net.player.id));
+      ui.toast('Заходим в гости…');
+      ui.showCoop();
+    };
     window.__goHome = async () => {
       coop.leave();
       coop.join(initDataRaw(), net.net.player.id, net.net.player.id);
@@ -230,15 +245,15 @@ function onEvent(what) {
   if (screens.isOpen()) screens.refresh();
 }
 
-/** Подошли к недовольному клиенту — открываем разбор. */
+// Разбор открывается нажатием на значок над головой клиента: бегать через
+// весь зал к каждому недовольному было мучением, а окно вылетало само собой
+// прямо на бегу.
 let incidentOpen = false;
-function checkUpset() {
-  if (incidentOpen || screens.isOpen()) return;
-  const k = actors.upsetNear();
-  if (!k) return;
+window.__incident = (k) => {
+  if (incidentOpen || screens.isOpen() || !k || k.state !== 'upset') return;
   incidentOpen = true;
   screens.incident(k, () => { incidentOpen = false; });
-}
+};
 
 // Деньги в стройку списывает хозяин, поэтому у гостя монетки из рук сами не
 // полетят. Без них непонятно, что твой вклад вообще считается, — рисуем их по
@@ -367,7 +382,7 @@ function loop(rawDt) {
     if (v) scene.setPadFill(v, (S.padPaid?.[p.id] || 0) / p.cost,
                             game.padState.id === p.id && game.padState.short);
   }
-  if (!guest) { district.tick(dt); reviews.tick(dt); checkUpset(); }
+  if (!guest) { district.tick(dt); reviews.tick(dt); smm.tick(dt); }
   scene.tickTraffic(dt);
   scene.pulsePads([...views.pads.values()], dt, game.padState.id);
   fx.tick(dt);
@@ -392,5 +407,5 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens, district, reviews, net, coop };
+window.__game = { S, game, actors, scene, ui, screens, district, reviews, smm, net, coop };
 window.__balance = BAL;   // для инструментов замера темпа

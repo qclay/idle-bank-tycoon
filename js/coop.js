@@ -17,6 +17,7 @@ export const coop = {
   roomId: '',
   players: new Map(), // id → { id, name, x, y, dir, carry, view }
   snap: null,         // последний снимок от хоста (для гостя)
+  hostOnline: false,  // хозяин пункта на связи — иначе смотреть не на что
   error: '',
 };
 
@@ -98,7 +99,10 @@ export function close() {
 
 function handle(m) {
   if (m.t === 'hello') {
-    coop.host = m.host === coop.me;
+    // Считать мир может только владелец пункта. Проверяем это и у себя, а не
+    // только на сервере: чужой бизнес не должен зависеть от нашей симуляции.
+    coop.host = m.host === coop.me && String(coop.roomId) === String(coop.me);
+    coop.hostOnline = String(m.host || '') === String(coop.roomId);
     for (const p of m.players || []) if (p.id !== coop.me) upsert(p);
     if (!coop.host && m.snap) coop.snap = m.snap;
     tell();
@@ -110,7 +114,8 @@ function handle(m) {
     if (p) { p.gone = true; }
     tell();
   } else if (m.t === 'host') {
-    coop.host = m.id === coop.me;
+    coop.host = m.id === coop.me && String(coop.roomId) === String(coop.me);
+    coop.hostOnline = String(m.id || '') === String(coop.roomId);
     tell();
   } else if (m.t === 'sync') {
     for (const p of m.players || []) if (p.id !== coop.me) upsert(p);
@@ -129,6 +134,9 @@ function upsert(p) {
 export function others() {
   return [...coop.players.values()].filter((p) => !p.gone);
 }
+
+/** Код пункта — по нему друг заходит в гости, если ссылка не сработала. */
+export function myCode() { return String(coop.me || ''); }
 
 /** Наши координаты уходят в комнату — по ним хост считает наши действия. */
 export function sendMove(x, y, dir, carry) {

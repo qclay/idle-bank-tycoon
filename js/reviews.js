@@ -6,7 +6,7 @@
 
 import {
   REP, INCIDENTS, REVIEW_NAMES, REVIEW_GOOD, REVIEW_BAD, REVIEW_SOLVED, REVIEW_WALKOUT, REVIEW_MAX,
-  COUNTERS,
+  COUNTERS, ZONES, NEWS_SOURCES,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import { aiReviewBatch } from './net.js';
@@ -61,6 +61,15 @@ function addReview(kind, text, counterId, reason = '') {
 const pending = [];
 let aiTimer = 0;
 
+/** Что в пункте действительно есть. Без этого списка модель сочиняет услуги,
+ *  которых игрок ещё не построил, — и в ленте появлялись отзывы о примерочной
+ *  у тех, у кого её нет. */
+export function services() {
+  const list = COUNTERS.filter((c) => S.counters[c.id]?.open).map((c) => c.name);
+  for (const z of ZONES) if (S.zones?.[z.id]?.open) list.push(z.name);
+  return list;
+}
+
 function queueAi(rev, reason) {
   pending.push({ id: rev.id, kind: rev.kind, at: rev.at, reason });
   if (pending.length >= 5) flushAi();
@@ -71,7 +80,8 @@ async function flushAi() {
   clearTimeout(aiTimer); aiTimer = 0;
   const batch = pending.splice(0, 8);
   if (!batch.length) return;
-  const lines = await aiReviewBatch(batch.map(({ kind, at, reason }) => ({ kind, at, reason })));
+  const has = services();
+  const lines = await aiReviewBatch(batch.map(({ kind, at, reason }) => ({ kind, at, reason, has })));
   if (!lines) return;                       // модель недоступна — остаются заготовки
   batch.forEach((b, i) => {
     const line = lines[i];
@@ -196,4 +206,31 @@ export function tick(dt) {
   }
 }
 
+// ── Городские новости и посты продвижения ────────────────────────────────────
+// Лента — это не только отзывы: туда же падают новости района о конкуренте и
+// посты нанятого смм-щика. Формат общий, отличает их только kind.
+
+export function addNews(text, tag = '') {
+  ensure();
+  S.reviews.unshift({
+    id: Math.random().toString(36).slice(2, 8),
+    kind: 'news', text, who: pick(NEWS_SOURCES), at: tag, t: Date.now(), likes: 0,
+  });
+  if (S.reviews.length > REVIEW_MAX) S.reviews.length = REVIEW_MAX;
+  emit('rep');
+}
+
+export function addPromo(text, likes) {
+  ensure();
+  S.reviews.unshift({
+    id: Math.random().toString(36).slice(2, 8),
+    kind: 'smm', text, who: 'Ваш пункт', at: '', t: Date.now(), likes,
+  });
+  if (S.reviews.length > REVIEW_MAX) S.reviews.length = REVIEW_MAX;
+  emit('rep');
+}
+
 export function feed() { return S.reviews || []; }
+
+/** Только отзывы клиентов — рейтинг считается по ним. */
+export function onlyReviews() { return (S.reviews || []).filter((r) => r.kind !== 'news' && r.kind !== 'smm'); }
