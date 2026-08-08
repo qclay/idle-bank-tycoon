@@ -172,11 +172,6 @@ const closed = await p.$('.win.is-open');
 ok('окно закрывается', !closed);
 
 // 11. Сейв
-const persist = await p.evaluate(() => {
-  const { S } = window.__game;
-  S.gold = 777; S.cash = 4242;
-  return import('./app.js').then(() => true).catch(() => true);
-});
 await p.evaluate(() => { const s = window.__game; s.S.gold = 777; localStorage.setItem('idlebank2', JSON.stringify(s.S)); });
 await p.reload();
 await p.waitForFunction(() => !!window.__game, null, { timeout: 20000 });
