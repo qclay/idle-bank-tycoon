@@ -130,6 +130,7 @@ export async function initScene(host, onProgress = () => {}) {
 
   buildGround();
   buildWalls();
+  buildDark();
   fx.initFx(fxLayer, document.getElementById('worldUI'), tex.coin, screenOf);
   buildTraffic();
   fitCamera();
@@ -264,6 +265,21 @@ function buildGround() {
   rack(4.6, 0.05, 9.4, 0.5, false);
   rack(14.2, 0.05, 19.4, 0.5, false);
   rack(0.05, 9.2, 0.5, 12.3, true);
+
+  // Склад: длинные стеллажи в два ряда, между ними проход — есть где потеряться
+  // и есть что искать.
+  rack(24.5, 1.4, 25.0, 6.2, true);
+  rack(26.4, 1.4, 26.9, 6.2, true);
+  rack(24.5, 8.6, 25.0, 13.6, true);
+  rack(26.4, 8.6, 26.9, 13.6, true);
+  // паллеты с товаром у прохода
+  for (const [px0, py0] of [[25.3, 7.0], [26.1, 13.9]]) {
+    isoBox(g, px0, py0, px0 + 0.9, py0 + 0.9, 0, 0.12, 0x8b7355);
+    for (let i = 0; i < 3; i++) {
+      const c = PARCEL[(i * 3 + 1) % PARCEL.length];
+      isoBox(g, px0 + 0.1, py0 + 0.1, px0 + 0.8, py0 + 0.8, 0.12 + i * 0.3, 0.3, c);
+    }
+  }
 
   ground.addChild(g);
 
@@ -794,6 +810,33 @@ function buildWalls() {
     }
   }
 }
+
+// ── Темнота на складе ────────────────────────────────────────────────────────
+// Свет на складе не горит: снаружи видно только силуэты. Зашёл — лампы
+// включились, и стало ясно, кто ищет товар, а кто листает ленту.
+
+let darkView = null;
+export function buildDark() {
+  const r = ROOMS.find((x) => x.dark);
+  if (!r) return;
+  const g = new Graphics();
+  isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.02, 0x140F22, { alpha: 0.82 });
+  // мягкая кромка у проёма, чтобы темнота не обрубалась линейкой
+  isoRhomb(g, r.x0, r.y0, r.x0 + 0.9, r.y1, 0.021, 0x140F22, { alpha: 0.25 });
+  const c = new Container();
+  c.addChild(g);
+  c.zIndex = 1e6;                       // поверх пола и мебели, под интерфейсом
+  items.addChild(c);
+  darkView = c;
+}
+
+/** k = 0 — темно, 1 — свет включён. Меняем плавно: резкий скачок режет глаз. */
+export function setDark(k) {
+  if (darkView) darkView.alpha = 1 - clamp(k, 0, 1);
+}
+
+/** Насколько сейчас темно на складе — этим пользуются тесты. */
+export function darkAlpha() { return darkView ? darkView.alpha : 0; }
 
 function isVerticalDoor(d) {
   const a = ROOMS.find((r) => r.id === d.a), b = ROOMS.find((r) => r.id === d.b);

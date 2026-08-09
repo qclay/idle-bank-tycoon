@@ -3,7 +3,7 @@
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE, DISTRICT, REP, SMM,
+  DAILY_ALL, OFFLINE, DISTRICT, REP, SMM, ERRAND,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
@@ -14,7 +14,7 @@ import {
 import { toast, haptic, setNav, setBadge } from './ui.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
-import { resolveUpset } from './actors.js';
+import { resolveUpset, urgeClerk, helpClerk } from './actors.js';
 import * as coop from './coop.js';
 import * as smm from './smm.js';
 
@@ -667,6 +667,75 @@ function shopView() {
   wrap.appendChild(grid);
   wrap.appendChild(h('<div class="empty">Оплата — звёздами Telegram</div>').firstElementChild);
   return wrap;
+}
+
+// ── СОТРУДНИК НА СКЛАДЕ ──────────────────────────────────────────────────────
+// Застали оператора среди стеллажей. Ищет — можно помочь и ускорить. Листает
+// ленту — можно поторопить или оштрафовать; и то и другое бьёт по настроению,
+// а от настроения зависит, как он потом работает с людьми.
+
+export function errand(a, onClose) {
+  const c = COUNTERS.find((x) => x.id === a.id);
+  const st = S.counters[a.id];
+  const fineSum = Math.ceil((c?.base || 12) * 1.125 ** ((st?.lvl || 1) - 1) * 60 * ERRAND.finePart);
+  const m = reviews.morale(a.id);
+  const left = Math.max(0, Math.round(a.t));
+
+  const done = (msg, tone) => { close(); onClose?.(); if (msg) toast(msg); haptic(tone || 'success'); };
+
+  const el = open({
+    title: a.slack ? 'Застали за телефоном' : 'Ищет товар',
+    render: () => h(`<div class="card" style="padding:calc(16 * var(--du))">
+        <div class="row__name" style="justify-content:center;font-size:calc(17 * var(--du))">
+          ${a.slack ? 'Оператор листает ленту' : 'Оператор ищет заказ на стеллажах'}</div>
+        <div class="card__sub" style="margin-top:calc(6 * var(--du))">
+          ${esc(c ? c.name : '')} · осталось ~${left} с · настроение ×${m.toFixed(2)}</div>
+        <div class="card__sub" style="margin-top:calc(4 * var(--du))">
+          Пока его нет, стойка стоит и очередь звереет быстрее</div>
+      </div>
+      <div class="sect">Что делаем</div>
+      <div class="list" id="opts"></div>`),
+  });
+
+  const opts = el.el.querySelector('#opts');
+  const add = (icon, tone, name, sub, btnCls, btnT, btnP, onClick) => {
+    const row = h(`<div class="row">
+      <span class="tile ${tone}">${ic(icon, 'ic')}</span>
+      <div class="row__name">${name}</div>
+      <div class="row__sub">${sub}</div>
+      ${btn(btnCls + ' btn--row', btnT, btnP, 'i-coin')}
+    </div>`).firstElementChild;
+    row.querySelector('button').addEventListener('click', onClick);
+    opts.appendChild(row);
+  };
+
+  add('i-box', 'tile--ok', 'Помочь найти', 'Ищете вместе — заказ находится сразу, оператор благодарен',
+      'btn--ok', 'Помочь', null, () => {
+        helpClerk(a);
+        done('Нашли вдвоём · настроение выросло', 'success');
+      });
+
+  add('i-run', '', 'Поторопить', 'Возвращается к стойке немедленно, но обижается',
+      'btn--v', 'Погнали', null, () => {
+        urgeClerk(a);
+        done('Оператор вернулся к стойке', 'warning');
+      });
+
+  if (a.slack) {
+    add('i-warn', 'tile--gold', 'Оштрафовать', 'За телефон вместо работы. Настроение просядет заметно',
+        'btn--gold', 'Штраф', fmt(fineSum), () => {
+          S.cash += fineSum;
+          reviews.bumpMorale(a.id, ERRAND.fineMorale);
+          urgeClerk(a);
+          S.stats.fines = (S.stats.fines || 0) + 1;
+          save(true);
+          done(`Штраф ${fmt(fineSum)}`, 'warning');
+        });
+  }
+
+  const orig = el.el.querySelector('.win__close');
+  orig.addEventListener('click', () => onClose?.());
+  return el;
 }
 
 // ── ВМЕСТЕ ───────────────────────────────────────────────────────────────────

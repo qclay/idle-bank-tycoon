@@ -218,11 +218,23 @@ export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear
 // Бегать через весь зал к каждому недовольному было мучением.
 
 const moodEls = new Map();
-const FACE = { upset: 'i-sad', bad: 'i-sad', meh: 'i-meh', good: 'i-happy' };
+const FACE = { upset: 'i-sad', bad: 'i-sad', meh: 'i-meh', good: 'i-happy',
+               work: 'i-box', slack: 'i-phone' };
+
+/** Что показать над сотрудником на складе. В темноте — ничего: чтобы узнать,
+ *  надо подойти. */
+function stockBubbles() {
+  const out = [];
+  for (const a of actors.clerkList()) {
+    if (a.job !== 'search' || !actors.clerkSeen(a)) continue;
+    out.push({ id: 'clerk_' + a.id, x: a.x, y: a.y, mood: a.slack ? 'slack' : 'work', clerk: a });
+  }
+  return out;
+}
 
 function tickMoods() {
   const live = new Set();
-  const list = [...actors.customers, ...actors.ghostList()];
+  const list = [...actors.customers, ...actors.ghostList(), ...stockBubbles()];
   for (const k of list) {
     if (!k.mood) continue;
     live.add(k.id);
@@ -248,6 +260,7 @@ function tickMoods() {
 
 function onMoodTap(k) {
   haptic('light');
+  if (k.clerk) { window.__errand?.(k.clerk); return; }
   if (k.remote) { toast('Разбирается хозяин пункта'); return; }
   if (k.mood === 'upset') { window.__incident?.(k); return; }
   const c = COUNTERS.find((x) => x.id === k.counter);

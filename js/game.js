@@ -11,7 +11,7 @@ import * as fx from './fx.js';
 import * as reviews from './reviews.js';
 import {
   player, customers, clerks, runner, bagCap, clerkSpot, pickSpot, trayPos,
-  atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids,
+  atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids, clerkAway,
 } from './actors.js';
 
 // ── Зоны: постоянные бонусы на весь бизнес ───────────────────────────────────
@@ -176,7 +176,8 @@ export function tick(dt, ui) {
     if (st.cash >= trayCap(c)) { if (k.state === 'serve') k.state = 'wait'; continue; }
 
     let speed = 0;
-    if (st.clerk > 0) speed = clerkSpeed(c);
+    // Оператор ушёл на склад — стойка стоит, как если бы его и не нанимали.
+    if (st.clerk > 0 && !clerkAway(c.id)) speed = clerkSpeed(c);
     else {
       const sp = clerkSpot(c);
       // за стойку может встать и гость — помощь считается так же

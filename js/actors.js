@@ -7,7 +7,7 @@ import * as scene from './scene.js';
 import * as reviews from './reviews.js';
 import * as smm from './smm.js';
 import * as nav from './nav.js';
-import { REP } from './balance.js';
+import { REP, ERRAND, STOCK_SPOTS } from './balance.js';
 
 // ── Геометрия объектов ───────────────────────────────────────────────────────
 
@@ -178,6 +178,9 @@ export function tickCustomers(dt, onServed) {
       const idx = queueIndex(k);
       const q = queueSpot(counterDef(k.counter), idx);
       goTo(k, q.x, q.y, CUSTOMER.speed, dt);
+      // Пустая стойка бесит сильнее, чем просто очередь: человек стоит и видит,
+      // что его никто не обслуживает.
+      if (clerkAway(k.counter)) k.t += dt * ERRAND.waitPenalty;
       k.waited = Math.min(1, k.t / CUSTOMER.patience);
       // Чем дольше очередь стоит, тем мрачнее лица: это видно с другого конца
       // зала и подсказывает, куда бежать.
@@ -368,7 +371,11 @@ export function syncStaff() {
     const has = clerks.has(c.id);
     if (st.open && st.clerk > 0 && !has) {
       const spot = clerkSpot(c);
-      clerks.set(c.id, { x: spot.x, y: spot.y, view: scene.makeCharView(0xcfe6ff), dir: 'se', frame: 0, ft: 0 });
+      clerks.set(c.id, {
+        id: c.id, x: spot.x, y: spot.y, view: scene.makeCharView(0xcfe6ff),
+        dir: 'se', frame: 0, ft: 0,
+        job: 'desk', t: errandDelay(), spot: null, slack: false, path: null, pi: 0,
+      });
     } else if ((!st.open || st.clerk <= 0) && has) {
       scene.removeView(clerks.get(c.id).view);
       clerks.delete(c.id);
@@ -385,14 +392,88 @@ export function syncStaff() {
   }
 }
 
+// ── Походы за товаром ────────────────────────────────────────────────────────
+// Оператор не приклеен к стойке: он живёт своей жизнью и время от времени
+// уходит на склад. Там его либо застанешь за работой, либо за телефоном — но
+// узнать это можно, только зайдя внутрь: на складе темно.
+
+const rnd = (a, b) => a + Math.random() * (b - a);
+function errandDelay() { return rnd(ERRAND.everyMin, ERRAND.everyMax); }
+
+/** Оператор этой стойки сейчас не на месте. */
+export function clerkAway(counterId) {
+  const a = clerks.get(counterId);
+  return !!a && a.job !== 'desk';
+}
+
+/** Тот, кого игрок может застать на складе: рядом и занят поиском. */
+export function clerkNear(r = 1.6) {
+  let best = null, bd = r;
+  for (const a of clerks.values()) {
+    if (a.job !== 'search') continue;
+    const d = dist(player.x, player.y, a.x, a.y);
+    if (d < bd) { bd = d; best = a; }
+  }
+  return best;
+}
+
+/** Видно ли, чем занят оператор: в темноте — только вблизи. */
+export function clerkSeen(a) {
+  return dist(player.x, player.y, a.x, a.y) < ERRAND.seeR;
+}
+
+export function clerkList() { return [...clerks.values()]; }
+
+/** Поторопить: возвращается к стойке сразу, но обижается. */
+export function urgeClerk(a) {
+  if (!a || a.job !== 'search') return;
+  a.job = 'back'; a.path = null;
+  reviews.bumpMorale(a.id, ERRAND.hurryMorale);
+}
+
+/** Помочь искать: пара секунд вашего времени, зато оператор доволен. */
+export function helpClerk(a) {
+  if (!a || a.job !== 'search') return;
+  a.t = Math.min(a.t, ERRAND.helpTime);
+  a.slack = false;
+  reviews.bumpMorale(a.id, ERRAND.helpMorale);
+}
+
 export function tickClerks(dt) {
   for (const [id, a] of clerks) {
-    const busy = !!frontCustomer(id);
-    a.ft += dt * (busy ? 7 : 2.2);
-    a.frame = Math.floor(a.ft) % 4;
-    scene.setCharFrame(a.view, 'se', busy ? a.frame : 0);
-    // лёгкое покачивание, чтобы зал не выглядел замершим
-    scene.bobChar(a.view, a.ft, busy);
+    if (a.job === 'desk') {
+      a.t -= dt;
+      if (a.t <= 0 && S.counters[id]?.open) {
+        a.job = 'toStock';
+        a.spot = STOCK_SPOTS[Math.floor(Math.random() * STOCK_SPOTS.length)];
+        a.slack = Math.random() < ERRAND.slackChance;
+        a.path = null;
+      }
+      const busy = !!frontCustomer(id);
+      a.ft += dt * (busy ? 7 : 2.2);
+      scene.setCharFrame(a.view, 'se', busy ? Math.floor(a.ft) % 4 : 0);
+      scene.bobChar(a.view, a.ft, busy);
+    } else if (a.job === 'toStock') {
+      a.ft += dt * 8;
+      if (goTo(a, a.spot.x, a.spot.y, 2.5, dt)) {
+        a.job = 'search';
+        a.t = ERRAND.search * (a.slack ? ERRAND.slackMul : 1);
+      }
+      scene.setCharFrame(a.view, a.dir, Math.floor(a.ft) % 4);
+    } else if (a.job === 'search') {
+      a.t -= dt;
+      a.ft += dt * (a.slack ? 1.2 : 5);
+      scene.setCharFrame(a.view, a.slack ? 'se' : 'ne', a.slack ? 0 : Math.floor(a.ft) % 4);
+      scene.bobChar(a.view, a.ft, !a.slack);
+      if (a.t <= 0) { a.job = 'back'; a.path = null; }
+    } else if (a.job === 'back') {
+      a.ft += dt * 8;
+      const c = counterDef(id);
+      const sp = clerkSpot(c);
+      if (goTo(a, sp.x, sp.y, 2.5, dt)) { a.job = 'desk'; a.t = errandDelay(); }
+      scene.setCharFrame(a.view, a.dir, Math.floor(a.ft) % 4);
+    }
+    scene.setMood(a.view, null);
     scene.placeActor(a.view, a.x, a.y);
   }
 }

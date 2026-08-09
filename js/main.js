@@ -250,6 +250,14 @@ function onEvent(what) {
 // весь зал к каждому недовольному было мучением, а окно вылетало само собой
 // прямо на бегу.
 let incidentOpen = false;
+// Разговор с оператором на складе — тоже по нажатию на значок.
+let errandOpen = false;
+window.__errand = (a) => {
+  if (errandOpen || screens.isOpen() || !a || a.job !== 'search') return;
+  errandOpen = true;
+  screens.errand(a, () => { errandOpen = false; });
+};
+
 window.__incident = (k) => {
   if (incidentOpen || screens.isOpen() || !k || k.state !== 'upset') return;
   incidentOpen = true;
@@ -276,6 +284,19 @@ function guestPadFx(dt) {
   }
 }
 let padFxTick = 0;
+
+// Свет на складе зажигается, когда игрок туда заходит, и гаснет, когда уходит.
+// Из-за этого проверить сотрудника можно только ногами — как и просили.
+let lightK = 0;
+function tickStock(dt) {
+  const r = nav.roomAt(actors.player.x, actors.player.y);
+  const want = r?.dark ? 1 : 0;
+  lightK += (want - lightK) * Math.min(1, dt * 4);
+  scene.setDark(lightK);
+  for (const a of actors.clerkList()) {
+    if (a.job === 'search') scene.setMood(a.view, null);
+  }
+}
 
 /** Обмен с комнатой: свои координаты туда, чужие — в зал. */
 function syncCoop(dt, guest) {
@@ -349,6 +370,7 @@ function loop(rawDt) {
     if (v && S.settings.fx) fx.pulse(v, 0.06);
   });
   actors.tickClerks(dt);
+  tickStock(dt);
   if (!guest) {
     actors.tickRunner(dt, game.takeFromSource, game.deposit);
     game.tick(dt, ui);

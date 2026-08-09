@@ -34,6 +34,15 @@ export function morale(counterId) {
   return clamp(st?.morale ?? 1, REP.moraleMin, REP.moraleMax);
 }
 
+/** Подвинуть настроение оператора — этим пользуются и разбор, и склад. */
+export function bumpMorale(counterId, d) {
+  ensure();
+  const st = S.counters[counterId];
+  if (!st) return;
+  st.morale = clamp((st.morale ?? 1) + d, REP.moraleMin, REP.moraleMax);
+  emit('rep');
+}
+
 function addRep(d) {
   S.rep = clamp((S.rep ?? REP.start) + d, REP.min, REP.max);
 }
