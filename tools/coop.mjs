@@ -342,16 +342,25 @@ ok('и там снова видно хозяина', byCode.sees.includes(String
 // ── 9. Хозяин вышел — чужой пункт замирает ───────────────────────────────────
 // Передавать бизнес гостю нельзя: считать его может только владелец.
 
+// Тост живёт пару секунд, поэтому ловим его появление, а не ищем потом.
+await guest.evaluate(() => {
+  window.__seenToasts = [];
+  new MutationObserver((ms) => {
+    for (const m of ms) for (const n of m.addedNodes) window.__seenToasts.push(n.textContent || '');
+  }).observe(document.getElementById('toasts'), { childList: true });
+});
 await host.close();
 await guest.waitForTimeout(3000);
 const dormant = await guest.evaluate(() => ({
   host: window.__game.coop.coop.host,
   online: window.__game.coop.coop.hostOnline,
-  chip: document.getElementById('coopChip')?.textContent || '',
+  chip: document.getElementById('coopChip')?.textContent.trim() || '',
+  toasts: (window.__seenToasts || []).join(' | '),
 }));
 ok('гость не начинает считать чужой пункт', !dormant.host);
-ok('гостю сказано, что хозяин не в сети', !dormant.online && /не в сети/.test(dormant.chip),
-   dormant.chip);
+ok('гостю сказано, что хозяин вышел', !dormant.online && /замерло/.test(dormant.toasts),
+   dormant.toasts || 'тоста не было');
+ok('счётчик в шапке это тоже показывает', dormant.chip === '—', `в шапке «${dormant.chip}»`);
 
 await guest.screenshot({ path: `${OUT}/coop-guest.png` });
 

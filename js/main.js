@@ -124,7 +124,17 @@ async function boot() {
       ui.toast('Вы вернулись в свой пункт');
       ui.showCoop();
     };
-    coop.onCoop(() => ui.showCoop());
+    // Хозяин вышел — пункт замирает. Об этом надо сказать словами, цифры в
+    // шапке такое не объясняют.
+    let hostWas = true;
+    coop.onCoop(() => {
+      ui.showCoop();
+      if (coop.visiting()) {
+        if (hostWas && !coop.coop.hostOnline) ui.toast('Хозяин пункта вышел — здесь всё замерло');
+        if (!hostWas && coop.coop.hostOnline) ui.toast('Хозяин вернулся, работаем');
+        hostWas = coop.coop.hostOnline;
+      }
+    });
   }
   ui.showCoop();
 
