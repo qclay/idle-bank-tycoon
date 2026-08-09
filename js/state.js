@@ -1,6 +1,6 @@
 // Состояние игры и сохранение.
 
-import { COUNTERS, ATMS, ZONES, UPGRADES, DAILY_POOL, DAILY_COUNT } from './balance.js';
+import { COUNTERS, ATMS, ZONES, UPGRADES, DAILY_POOL, DAILY_COUNT, STREAK } from './balance.js';
 
 export const S = {};
 const subs = new Set();
@@ -31,7 +31,7 @@ export function defaultState() {
     counters, atms, zones, ups,
     runner: 0,                 // уровень инкассатора, 0 — не нанят
 
-    stats: { served: 0, deposits: 0, earned: 0, upgrades: 0, opened: 1, hires: 0,
+    stats: { served: 0, deposits: 0, earned: 0, lifetime: 0, upgrades: 0, opened: 1, hires: 0,
              boosts: 0, safes: 0, steps: 0 },
     daily: { date: '', tasks: [], allDone: false, counters: {} },
     achv: {},
@@ -85,8 +85,26 @@ export function save(now = false) {
 
 export function todayKey(d = new Date()) { return d.toISOString().slice(0, 10); }
 
+/** День сменился — двигаем серию. Заходил вчера: серия растёт. Пропустил:
+ *  падает к подаренным отметкам, но не в ноль. */
+function rollStreak(key) {
+  if (!S.streak) S.streak = { days: STREAK.gift, last: '', best: STREAK.gift, claimed: '' };
+  if (S.streak.last === key) return;
+  const y = new Date(Date.now() - 86400e3).toISOString().slice(0, 10);
+  S.streak.days = S.streak.last === y ? S.streak.days + 1 : STREAK.gift;
+  S.streak.last = key;
+  S.streak.best = Math.max(S.streak.best || 0, S.streak.days);
+}
+
+/** Пока серия жива, весь доход немного выше — её видно не только цифрой. */
+export function streakBonus() {
+  if (!S.streak) return 0;
+  return Math.min(STREAK.maxBonus, (S.streak.days - STREAK.gift) * STREAK.bonusPerDay);
+}
+
 export function rollDaily() {
   const key = todayKey();
+  rollStreak(key);
   if (S.daily.date === key && S.daily.tasks.length) return false;
   let r = [...key].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 11);
   const rnd = () => (r = (r * 1664525 + 1013904223) >>> 0) / 4294967296;

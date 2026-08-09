@@ -29,6 +29,11 @@ window.__openTab = (tab, sub) => {
     screens.together();
     return;
   }
+  if (tab === 'network') {
+    if (screens.isOpen()) screens.close(true);
+    screens.network();
+    return;
+  }
   if (tab === 'social') {
     if (screens.isOpen()) screens.close(true);
     screens.social(sub);
@@ -436,3 +441,4 @@ boot().catch((e) => {
 // отладочный доступ для тестов
 window.__game = { S, game, actors, scene, ui, screens, district, reviews, smm, net, coop, nav };
 window.__balance = BAL;   // для инструментов замера темпа
+window.__fmt = { fmt };

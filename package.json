@@ -32,6 +32,8 @@
     "stock": "node tools/stock.mjs",
     "ui": "node tools/ui.mjs",
     "busy": "node tools/busy.mjs",
+    "econ": "node tools/econ.mjs",
+    "prestige": "node tools/prestige.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

@@ -3,13 +3,14 @@
 import { fmt, dur, clock, plural } from './core.js';
 import {
   COUNTERS, ATMS, ZONES, STAFF, BOOSTS, SAFES, SHOP_GOLD, ACHIEVEMENTS, DAILY_POOL,
-  DAILY_ALL, OFFLINE, DISTRICT, REP, SMM, ERRAND,
+  DAILY_ALL, OFFLINE, DISTRICT, REP, SMM, ERRAND, PRESTIGE, STREAK,
 } from './balance.js';
 import { S, save, emit } from './state.js';
 import {
   counterPay, counterUpCost, upgradeCounter, atmRate, atmUpCost, upgradeAtm,
   clerkCost, clerkSpeed, hireClerk, runnerCost, hireRunner, boostLeft,
   shownIncome, offlineUpCost, offlineCapSec, autoIncome, zoneUpCost, upgradeZone, zoneBonus,
+  prestigeGain, prestigeMult, prestigeReady, prestigeDouble, prestigeName, prestigeDo,
 } from './game.js';
 import { toast, haptic, setNav, setBadge } from './ui.js';
 import * as district from './district.js';
@@ -391,6 +392,26 @@ export function tasks(sub) {
   if (sub === 'district') m.el.querySelectorAll('.win__tab')[1]?.click();
 }
 
+/** Полоса серии: подаренные отметки, набранные и те, что ещё впереди. */
+function streakStrip() {
+  const st = S.streak || { days: STREAK.gift };
+  const total = STREAK.gift + STREAK.goal;
+  let dots = '';
+  for (let i = 1; i <= total; i++) {
+    const cls = i <= STREAK.gift ? 'gift' : i <= st.days ? 'on' : '';
+    dots += `<i class="${cls}"></i>`;
+  }
+  const bonus = Math.round(Math.min(STREAK.maxBonus, (st.days - STREAK.gift) * STREAK.bonusPerDay) * 100);
+  return h(`<div class="streak">
+    <div class="streak__h">
+      <b>Серия ${st.days} ${plural(st.days, 'день', 'дня', 'дней')}</b>
+      <span>${bonus ? `весь доход +${bonus}%` : 'заходите завтра — доход начнёт расти'}</span>
+    </div>
+    <div class="streak__dots">${dots}</div>
+    <div class="streak__f">Пропустите день — серия вернётся к ${STREAK.gift} отметкам</div>
+  </div>`).firstElementChild;
+}
+
 function dailyDef(id) { return DAILY_POOL.find((d) => d.id === id); }
 export function dailyProgress(t) {
   const d = dailyDef(t.id);
@@ -403,6 +424,7 @@ export function dailyReady(t) {
 
 function dailyView() {
   const wrap = document.createElement('div');
+  wrap.appendChild(streakStrip());
   const until = 86400 - (Date.now() / 1000) % 86400;
   wrap.appendChild(h(`<div class="sect">Обновятся через ${dur(until)}</div>`).firstElementChild);
   const list = document.createElement('div');
@@ -689,6 +711,106 @@ function shopView() {
   wrap.appendChild(grid);
   wrap.appendChild(h('<div class="empty">Оплата — звёздами Telegram</div>').firstElementChild);
   return wrap;
+}
+
+// ── СЕТЬ МАГАЗИНОВ ───────────────────────────────────────────────────────────
+// Клапан жанра: когда следующая покупка перестаёт окупаться, магазин передают
+// управляющему и открывают новый в соседнем районе. Показываем ровно то, что
+// нужно для решения: сколько долей дадут, во что превратится доход и сколько
+// оборота осталось до удвоения — по этому правилу и решают, когда уходить.
+
+export function network() {
+  open({ title: 'Сеть магазинов', render: networkView });
+}
+
+function networkView() {
+  const wrap = document.createElement('div');
+  const gain = prestigeGain();
+  const have = S.prestige?.points || 0;
+  const ready = prestigeReady();
+  const opened = COUNTERS.filter((c) => S.counters[c.id].open).length;
+  const after = 1 + (have + gain) * PRESTIGE.perPoint;
+
+  wrap.appendChild(h(`<div class="netcard">
+    <div class="netcard__n">${fmt(have)}</div>
+    <div class="netcard__r">
+      <b>${have ? plural(have, 'доля в сети', 'доли в сети', 'долей в сети') : 'Долей пока нет'}</b>
+      <span>Сейчас весь доход ×${prestigeMult().toFixed(2)}</span>
+    </div>
+  </div>`).firstElementChild);
+
+  wrap.appendChild(h('<div class="sect">Текущий магазин</div>').firstElementChild);
+  wrap.appendChild(h(`<div class="note">
+    <b>${esc(prestigeName())}</b>
+    <span>Оборот за всё время: ${fmt(Math.round(S.stats.lifetime || 0))}</span>
+  </div>`).firstElementChild);
+
+  if (!ready) {
+    wrap.appendChild(h(`<div class="note">
+      <b>Новый район откроется позже</b>
+      <span>Нужно ${PRESTIGE.needCounters} витрины (открыто ${opened}) и ${PRESTIGE.needLevel}-й уровень (сейчас ${S.level}).</span>
+    </div>`).firstElementChild);
+    return wrap;
+  }
+
+  wrap.appendChild(h('<div class="sect">Если передать магазин сейчас</div>').firstElementChild);
+  wrap.appendChild(h(`<div class="netgain">
+    <div class="netgain__row"><span>Получите долей</span><b>+${fmt(gain)}</b></div>
+    <div class="netgain__row"><span>Доход станет</span><b>×${after.toFixed(2)}</b></div>
+    <div class="netgain__row"><span>До удвоения долей</span><b>${fmt(Math.round(prestigeDouble()))}</b></div>
+  </div>`).firstElementChild);
+
+  const tip = h(`<div class="empty">Опытные владельцы уходят, когда доля удваивается —
+    тогда каждый следующий магазин заметно сильнее предыдущего.</div>`).firstElementChild;
+
+  const b = h(btn('btn--v btn--wide', gain > 0 ? 'Передать магазин управляющему' : 'Оборота пока мало',
+                  null, 'i-coin', gain <= 0)).firstElementChild;
+  if (gain > 0) b.addEventListener('click', () => confirmNetwork(gain, after));
+  wrap.appendChild(b);
+  wrap.appendChild(tip);
+
+  wrap.appendChild(h('<div class="sect">Что переезжает с вами</div>').firstElementChild);
+  for (const [ic2, t2, s2] of [
+    ['i-gem', 'Кристаллы', 'остаются полностью'],
+    ['i-star', 'Репутация и отзывы', 'город вас помнит'],
+    ['i-gift', 'Награды и достижения', 'сохраняются'],
+    ['i-box', 'Витрины, зоны и улучшения', 'начинаются заново'],
+  ]) {
+    wrap.appendChild(h(`<div class="row row--plain">
+      <span class="tile">${ic(ic2, 'ic')}</span>
+      <div class="row__name">${t2}</div>
+      <div class="row__sub">${s2}</div>
+    </div>`).firstElementChild);
+  }
+  return wrap;
+}
+
+function confirmNetwork(gain, after) {
+  const el = open({
+    title: 'Новый район',
+    render: () => h(`<div class="card" style="padding:calc(16 * var(--du))">
+      <div class="row__name" style="justify-content:center;font-size:calc(17 * var(--du))">
+        Передать «${esc(prestigeName())}» управляющему?</div>
+      <div class="card__sub" style="margin-top:calc(6 * var(--du))">
+        Витрины, зоны и улучшения начнутся заново. Взамен — <b>+${fmt(gain)}</b>
+        ${plural(gain, 'доля', 'доли', 'долей')} в сети и доход ×${after.toFixed(2)} навсегда.</div>
+      </div>
+      <div class="list" id="acts"></div>`),
+  });
+  const acts = el.el.querySelector('#acts');
+  const go = h(btn('btn--v btn--wide', 'Открыть новый магазин', null)).firstElementChild;
+  go.addEventListener('click', () => {
+    const r = prestigeDo();
+    close();
+    if (r) {
+      haptic('success');
+      toast(`${prestigeName()} открыт · доход ×${r.mult.toFixed(2)}`);
+    }
+  });
+  acts.appendChild(go);
+  const no = h(btn('btn--ok btn--wide', 'Пока рано', null)).firstElementChild;
+  no.addEventListener('click', () => close());
+  acts.appendChild(no);
 }
 
 // ── СОТРУДНИК НА СКЛАДЕ ──────────────────────────────────────────────────────

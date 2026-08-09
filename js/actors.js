@@ -86,7 +86,7 @@ export function bagCap() {
   const u = UPGRADES.bag;
   // Вместимость считаем в «клиентах», а не в рублях: тогда сколько бы ни вырос
   // чек, ходок до кассы остаётся примерно столько же, и темп игры не сходит с ума.
-  let c = (u.base + u.step * (S.ups.bag || 0)) * game.payScale();
+  let c = u.base * u.gain ** (S.ups.bag || 0) * game.payScale();
   if (boostOn('sprint')) c *= 2;
   return c;
 }

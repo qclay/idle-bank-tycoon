@@ -3,8 +3,9 @@
 import {
   COUNTERS, ATMS, ZONES, UPGRADES, COUNTER_UP, CUSTOMER, STAFF, VAULT, XP, xpForLevel,
   OFFLINE, BOOSTS, SAFES, ACHIEVEMENTS, DAILY_POOL, DAILY_ALL, PAD_DWELL, PAD_STOP_SPEED,
+  PRESTIGE,
 } from './balance.js';
-import { S, save, emit } from './state.js';
+import { S, save, emit, streakBonus } from './state.js';
 import { clamp, dist } from './core.js';
 import * as scene from './scene.js';
 import * as fx from './fx.js';
@@ -17,11 +18,17 @@ import {
 // ── Зоны: постоянные бонусы на весь бизнес ───────────────────────────────────
 
 /** Суммарный бонус зон нужного типа: spawn | pay | speed | offline. */
+/** Прибавка зоны растёт долями от уровня к уровню, а не одинаковыми шагами:
+ *  иначе цена уходит вверх кратно быстрее пользы и уровни перестают окупаться. */
+export function zoneGain(z, lvl) {
+  return z.step * (z.gain ** lvl - 1) / (z.gain - 1);
+}
+
 export function zoneBonus(effect) {
   let b = 0;
   for (const z of ZONES) {
     const st = S.zones?.[z.id];
-    if (st?.open && z.effect === effect) b += z.step * st.lvl;
+    if (st?.open && z.effect === effect) b += zoneGain(z, st.lvl);
   }
   return b;
 }
@@ -47,14 +54,27 @@ export function upgradeZone(z) {
 
 export function counterPay(def) {
   const st = S.counters[def.id];
-  return def.base * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost()
-    * (1 + zoneBonus('pay')) * reviews.payMult();
+  return def.base * COUNTER_UP.payGrow ** (st.lvl - 1) * milestoneMult(st.lvl)
+    * vaultMult() * moneyBoost() * (1 + zoneBonus('pay')) * reviews.payMult()
+    * prestigeMult() * (1 + streakBonus());
 }
 export function counterUpCost(def) {
   const st = S.counters[def.id];
   const base = def.cost || 300;
   return Math.ceil(base * COUNTER_UP.costRatio * COUNTER_UP.grow ** (st.lvl - 1));
 }
+/** Круглые уровни дают скачок ×2. Игрок видит порог, докупает до него и
+ *  получает рывок — без этих ступеней прокачка ощущается ровной кашей. */
+export function milestoneMult(lvl) {
+  let m = 1;
+  for (const t of COUNTER_UP.milestones) if (lvl >= t) m *= 2;
+  return m;
+}
+
+export function nextMilestone(lvl) {
+  return COUNTER_UP.milestones.find((t) => t > lvl) || null;
+}
+
 export function trayCap(def) { return counterPay(def) * 14; }
 
 /** Во сколько раз выросла экономика с самого начала. Сумка и тележка
@@ -71,7 +91,8 @@ export function payScale() {
 
 export function atmRate(def) {
   const st = S.atms[def.id];
-  return def.rate * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost();
+  return def.rate * COUNTER_UP.payGrow ** (st.lvl - 1) * milestoneMult(st.lvl)
+    * vaultMult() * moneyBoost() * prestigeMult();
 }
 export function atmUpCost(def) {
   const st = S.atms[def.id];
@@ -85,7 +106,10 @@ export function upCost(key) {
 }
 export function upValue(key) {
   const u = UPGRADES[key];
-  return u.base + u.step * (S.ups[key] || 0);
+  const lvl = S.ups[key] || 0;
+  // Множители растут долями, простые прибавки — шагами: скорость ходьбы не
+  // может умножаться, иначе герой улетит через весь зал.
+  return u.gain != null ? u.base * u.gain ** lvl : u.base + u.step * lvl;
 }
 export function vaultMult() { return upValue('vault'); }
 
@@ -136,6 +160,77 @@ export function pads() {
 }
 
 if (!S.padPaid) S.padPaid = {};
+
+// ── Престиж ──────────────────────────────────────────────────────────────────
+// Сколько долей в сети даст закрытие пункта прямо сейчас и что они дают.
+
+export function prestigeEnsure() {
+  if (!S.prestige) S.prestige = { runs: 0, points: 0, spentLifetime: 0 };
+  if (S.stats.lifetime == null) S.stats.lifetime = S.stats.earned || 0;
+}
+
+/** Доли за весь оборот минус те, что уже получены за прошлые круги. */
+export function prestigeGain() {
+  prestigeEnsure();
+  const total = Math.floor(PRESTIGE.k * Math.sqrt(Math.max(0, S.stats.lifetime) / PRESTIGE.unit));
+  return Math.max(0, total - S.prestige.points);
+}
+
+/** Постоянный множитель дохода от уже полученных долей. */
+export function prestigeMult() {
+  prestigeEnsure();
+  return 1 + S.prestige.points * PRESTIGE.perPoint;
+}
+
+/** Пункт открывается, когда бизнес дорос: иначе престиж превращается в
+ *  доминирующую стратегию и игрок пропускает содержание игры. */
+export function prestigeReady() {
+  prestigeEnsure();
+  const opened = COUNTERS.filter((c) => S.counters[c.id].open).length;
+  return opened >= PRESTIGE.needCounters && S.level >= PRESTIGE.needLevel;
+}
+
+/** Сколько ещё оборота до удвоения долей — по этой подсказке и решают, когда
+ *  закрывать пункт. Правило жанра: уходить, когда доля удваивается. */
+export function prestigeDouble() {
+  prestigeEnsure();
+  const have = S.prestige.points + prestigeGain();
+  const want = Math.max(1, have * 2);
+  const need = (want / PRESTIGE.k) ** 2 * PRESTIGE.unit;
+  return Math.max(0, need - S.stats.lifetime);
+}
+
+export function prestigeName(run = null) {
+  prestigeEnsure();
+  const n = PRESTIGE.districts;
+  return n[Math.min(run ?? S.prestige.runs, n.length - 1)];
+}
+
+/** Передать магазин управляющему и открыть следующий в новом районе. Кристаллы,
+ *  репутация, награды и доли остаются с вами — иначе ресет ощущается
+ *  наказанием, а не шагом вперёд. */
+export function prestigeDo() {
+  prestigeEnsure();
+  const gain = prestigeGain();
+  if (!prestigeReady() || gain <= 0) return null;
+  S.prestige.points += gain;
+  S.prestige.runs++;
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    st.open = c.cost === 0; st.lvl = 1; st.clerk = 0; st.cash = 0; st.morale = 1;
+  }
+  for (const a of ATMS) { const st = S.atms[a.id]; st.open = false; st.lvl = 1; st.cash = 0; }
+  for (const z of ZONES) { if (S.zones[z.id]) { S.zones[z.id].open = false; S.zones[z.id].lvl = 1; } }
+  for (const k of Object.keys(S.ups)) S.ups[k] = 0;
+  S.cash = 0; S.carry = 0; S.padPaid = {};
+  S.level = 1; S.xp = 0;
+  S.runner = 0;
+  if (S.smm) S.smm.lvl = 0;
+  syncStaff(); refreshSolids();
+  emit('prestige'); emit('build');
+  save(true);
+  return { gain, points: S.prestige.points, mult: prestigeMult() };
+}
 
 // ── Взаимодействие игрока ────────────────────────────────────────────────────
 
@@ -273,6 +368,7 @@ export function deposit(v) {
   if (!(v > 0)) return;
   S.cash += v;
   S.stats.earned += v;
+  S.stats.lifetime = (S.stats.lifetime || 0) + v;
   S.stats.deposits += 1 / 30;
   bumpDaily('deposits', 1 / 30);
   addXp(XP.perDeposit * 0.05);
@@ -311,6 +407,7 @@ function payFrom(amount, w = null) {
     left -= fromBag;
     // деньги из рук тоже засчитываем как выручку, иначе ломается статистика
     S.stats.earned += fromBag;
+    S.stats.lifetime = (S.stats.lifetime || 0) + fromBag;
     S.stats.deposits += 1 / 60;
     bumpDaily('deposits', 1 / 60);
   }

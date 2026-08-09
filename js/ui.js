@@ -4,6 +4,7 @@ import { fmt, du, clamp, plural } from './core.js';
 import { S, save } from './state.js';
 import { xpForLevel } from './balance.js';
 import { pads, padState } from './game.js';
+import * as game from './game.js';
 import { COUNTERS, VAULT, DISTRICT } from './balance.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
@@ -37,6 +38,7 @@ export function initUI() {
   $('#goldPill').addEventListener('click', () => window.__openTab('shop'));
   $('#gearBtn').addEventListener('click', () => window.__openTab('settings'));
   $('#repPill').addEventListener('click', () => window.__openTab('social'));
+  $('#netPill').addEventListener('click', () => window.__openTab('network'));
 }
 
 export function setNav(tab) {
@@ -119,6 +121,17 @@ export function tickHud(dt) {
   const repTxt = rep.toFixed(1);
   if (els.repV.textContent !== repTxt) els.repV.textContent = repTxt;
   els.repPill.classList.toggle('is-bad', rep < 3.5);
+  // Сеть показывается, только когда в ней уже есть смысл: до первого нового
+  // района этой кнопки на экране нет.
+  const net = $('#netPill');
+  const gain = game.prestigeGain();
+  const show = (S.prestige?.points || 0) > 0 || game.prestigeReady();
+  net.hidden = !show;
+  if (show) {
+    net.querySelector('b').textContent = '×' + game.prestigeMult().toFixed(2);
+    net.querySelector('.badge').hidden = gain <= 0;
+  }
+
   const unread = Math.max(0, (S.reviews?.length || 0) - (S.seenReviews || 0));
   els.repBadge.hidden = unread === 0;
   if (unread) els.repBadge.textContent = unread > 9 ? '9+' : String(unread);
