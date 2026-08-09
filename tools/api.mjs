@@ -41,6 +41,10 @@ const call = async (path, opts = {}, id = A) => {
 const checks = [];
 const ok = (name, cond, info = '') => checks.push({ name, pass: !!cond, info });
 
+// Список услуг, который модель обязана уважать: ничего сверх него в пункте нет.
+const ONLY = ['Выдача заказов'];
+const FORBIDDEN = /примероч|кофе|курьер|доставк|сортиров/i;
+
 // 1. вход
 const auth = await call('/auth', { method: 'POST' });
 ok('вход по подписи Telegram', auth.status === 200 && auth.body?.player?.id === '900001',
@@ -127,7 +131,28 @@ ok('второй игрок виден в комнате', roomOk.seenJoin, 'п�
 ok('позиции расходятся всем', roomOk.seenSync,
    (roomOk.players || []).map((p) => `${p.name}(${p.x},${p.y})`).join(' '));
 
-let bad = 0;
-for (const c of checks) { if (!c.pass) bad++; console.log(`${c.pass ? '✓' : '✗'} ${c.name.padEnd(38)} ${c.info}`); }
-console.log(bad ? `\n✗ проблем: ${bad}` : '\n✓ бэкенд работает целиком');
-process.exit(bad ? 1 : 0);
+
+// ── модель не выдумывает то, чего в пункте нет ──────────────────────────────
+
+const strict = await call('/review', { method: 'POST', body: JSON.stringify({
+  list: Array.from({ length: 4 }, () => ({
+    kind: 'bad', at: 'Выдача заказов', reason: 'долго ждал', has: ONLY,
+  })),
+}) });
+const lines = strict.body?.lines || [];
+ok('модель пишет только о том, что в пункте есть',
+   lines.length > 0 && !lines.some((l) => FORBIDDEN.test(l)),
+   lines.join(' | ').slice(0, 160));
+
+// ── пост для страницы пункта ────────────────────────────────────────────────
+
+const post = await call('/review', { method: 'POST', body: JSON.stringify({
+  promo: { has: ONLY, stars: 4.4 },
+}) });
+ok('модель пишет пост для страницы пункта',
+   !!post.body?.text && !FORBIDDEN.test(post.body.text), post.body?.text || post.body?.error || '');
+
+for (const c of checks) console.log(`${c.pass ? '\u2713' : '\u2717'} ${c.name.padEnd(38)} ${c.info}`);
+const failed = checks.filter((c) => !c.pass).length;
+console.log(failed ? `\n\u2717 не прошло: ${failed}` : '\n\u2713 бэкенд работает целиком');
+process.exit(failed ? 1 : 0);

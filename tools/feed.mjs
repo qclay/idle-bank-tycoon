@@ -1,6 +1,7 @@
 // Лента соцсети: отзывы, новости района и посты продвижения в одном потоке.
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import crypto from 'node:crypto';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const OUT = process.env.SHOT_DIR || '/private/tmp/shots';
 const PAGE = process.env.SHOT_URL || 'http://localhost:8199/index.html';
@@ -142,6 +143,58 @@ await p.screenshot({ path: `${OUT}/feed-news.png` });
 await p.evaluate(() => document.querySelectorAll('.win__tab')[1].click());
 await p.waitForTimeout(400);
 await p.screenshot({ path: `${OUT}/feed-promo.png` });
+
+// ── 6. Пост смм-щика пишет модель ────────────────────────────────────────────
+// Заготовки быстро приедаются, а этот пост читают чаще всего. Проверяем на
+// вкладке с настоящей подписью: без неё сервер недоступен и текст остаётся свой.
+
+const BOT = (process.env.BOT_TOKEN
+  || (readFileSync(new URL('../server/.dev.vars', import.meta.url), 'utf8')
+      .match(/BOT_TOKEN=(.+)/) || [])[1] || '').trim();
+if (BOT) {
+  const user = { id: 910004, first_name: 'Промо', username: 'promo_test' };
+  const f = { user: JSON.stringify(user), auth_date: String(Math.floor(Date.now() / 1000)),
+              query_id: 'AAF' + Math.random().toString(36).slice(2, 10) };
+  const check = Object.keys(f).sort().map((k) => `${k}=${f[k]}`).join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT).digest();
+  const raw = new URLSearchParams({ ...f, hash: crypto.createHmac('sha256', secret).update(check).digest('hex') }).toString();
+
+  const ctx = await b.newContext({ viewport: { width: 390, height: 780 }, deviceScaleFactor: 2 });
+  const tp = await ctx.newPage();
+  await tp.route('**/telegram-web-app.js', (r) => r.fulfill({ body: '', contentType: 'application/javascript' }));
+  await tp.addInitScript(([rd, u]) => {
+    const n = () => {};
+    window.Telegram = { WebApp: { initData: rd, initDataUnsafe: { user: u }, platform: 'ios', version: '7.0',
+      viewportStableHeight: 780, safeAreaInset: { top: 0, bottom: 0 }, contentSafeAreaInset: { top: 0, bottom: 0 },
+      ready: n, expand: n, onEvent: n, offEvent: n, setHeaderColor: n, setBackgroundColor: n, setBottomBarColor: n,
+      disableVerticalSwipes: n, enableClosingConfirmation: n, requestFullscreen: n,
+      HapticFeedback: { impactOccurred: n, notificationOccurred: n }, openTelegramLink: n } };
+  }, [raw, user]);
+  await tp.goto(PAGE);
+  await tp.waitForFunction(() => window.__ready === true, null, { timeout: 25000 });
+  await tp.waitForTimeout(600);
+
+  const promo = await tp.evaluate(async () => {
+    const { S, smm } = window.__game;
+    for (const [id, st] of Object.entries(S.counters)) st.open = id === 'c1';
+    S.reviews = [];
+    S.cash = 5e5;
+    smm.hire();
+    S.smm.t = 0.05;
+    for (let i = 0; i < 60 && !S.reviews.some((r) => r.kind === 'smm' && r.ai); i++) {
+      await new Promise((s) => setTimeout(s, 400));
+    }
+    const post = S.reviews.find((r) => r.kind === 'smm');
+    return { text: post?.text || '', ai: !!post?.ai, likes: post?.likes || 0 };
+  });
+  ok('пост смм-щика пишет модель', promo.ai, promo.text || 'модель не ответила');
+  ok('у поста есть лайки', promo.likes > 0, String(promo.likes));
+  ok('модель не выдумывает услуг, которых нет',
+     !/примероч|возврат|кофе|курьер/i.test(promo.text), promo.text);
+  await ctx.close();
+} else {
+  ok('пост смм-щика пишет модель', false, 'нет BOT_TOKEN — проверка пропущена');
+}
 
 for (const c of checks) console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.info ? '  — ' + c.info : ''}`);
 const bad = checks.filter((c) => !c.pass).length;
