@@ -1138,17 +1138,17 @@ export function fitCamera(hudTop = 0, hudBottom = 0) {
   insets.top = hudTop; insets.bottom = hudBottom;
 }
 
-/** Масштаб под помещение, где стоит игрок. Подгоняем по глубине комнаты, а не
- *  по ширине: в изометрии зал вдвое шире, чем выше, и попытка вместить его
- *  целиком делает людей размером с горошину. По глубине комната видна вся —
- *  этого хватает, чтобы понимать, где ты, — а вдоль камера едет за игроком.
- *  Раньше масштаб был жёстким, и в кадр попадали обрубки сразу четырёх комнат. */
-function scaleForRoom(r, w, h) {
-  if (!r) return 0.75;
-  const corners = [px(r.x0, r.y0), px(r.x1, r.y0), px(r.x1, r.y1), px(r.x0, r.y1)];
-  const tall = Math.max(...corners.map((c) => c.y)) - Math.min(...corners.map((c) => c.y))
-    + TH * 1.2 + ZU * 2.0;                        // запас на высоту мебели и стен
-  return clamp(h / tall, 0.5, 1.1);
+/** Масштаб один на весь магазин. Подгонять его под комнату было ошибкой: при
+ *  каждом переходе камера наезжала и отъезжала, и от этого укачивало. Берём
+ *  самое глубокое помещение и держим этот масштаб всегда — тогда камера просто
+ *  едет за игроком, ничего не дёргается. */
+function fixedScale(h) {
+  let deepest = 0;
+  for (const r of ROOMS) {
+    const cs = [px(r.x0, r.y0), px(r.x1, r.y0), px(r.x1, r.y1), px(r.x0, r.y1)];
+    deepest = Math.max(deepest, Math.max(...cs.map((c) => c.y)) - Math.min(...cs.map((c) => c.y)));
+  }
+  return clamp(h / (deepest + TH * 1.2 + ZU * 2.0), 0.5, 1.1);
 }
 
 export function follow(x, y, hudTop = 0, hudBottom = 0) {
@@ -1157,12 +1157,8 @@ export function follow(x, y, hudTop = 0, hudBottom = 0) {
   if (Math.abs(fitH - (app.screen.height - hudTop - hudBottom)) > 2) fitCamera(hudTop, hudBottom);
   const w = app.screen.width, h = app.screen.height;
 
-  // Камера показывает то помещение, где стоит игрок, целиком. При переходе
-  // масштаб переезжает плавно — резкий скачок читается как рывок.
-  const want = scaleForRoom(roomOf(x, y), w, Math.max(120, h - hudTop - hudBottom));
-  cam.scale += (want - cam.scale) * 0.06;
-  if (Math.abs(want - cam.scale) < 0.002) cam.scale = want;
-  world.scale.set(cam.scale);
+  const want = fixedScale(Math.max(120, h - hudTop - hudBottom));
+  if (cam.scale !== want) { cam.scale = want; world.scale.set(cam.scale); }
 
   const p = px(x, y, 0);
   const s = cam.scale;

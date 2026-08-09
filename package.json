@@ -34,6 +34,7 @@
     "busy": "node tools/busy.mjs",
     "econ": "node tools/econ.mjs",
     "prestige": "node tools/prestige.mjs",
+    "goal": "node tools/goal.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

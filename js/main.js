@@ -58,6 +58,26 @@ window.__openTab = (tab, sub) => {
   else if (tab === 'shop') screens.shop();
 };
 
+/** Полный сброс по кнопке из настроек: состояние обнуляем и сразу отправляем
+ *  на сервер, иначе при следующем входе вернётся старое. */
+window.__wipe = async () => {
+  bootState(null);
+  rollDaily();
+  district.ensure();
+  reviews.ensure();
+  smm.ensure();
+  actors.refreshSolids();
+  actors.syncStaff();
+  rebuildObjects();
+  actors.player.x = BAL.START.x;
+  actors.player.y = BAL.START.y;
+  await net.flush();
+  await net.markDirty(true);
+  ui.toast('Прогресс стёрт — магазин снова первый');
+  screens.close(true);
+  ui.showCoop();
+};
+
 window.__pay = async (item) => {
   const r = await pay(item, (it) => {
     S.gold += it.give?.gold || 0;

@@ -53,6 +53,9 @@ export function defaultState() {
 
 export function bootState(raw) {
   const base = defaultState();
+  // Ключи, которых нет в новом состоянии, надо снести: иначе после сброса в S
+  // остаются доли в сети и прочее, чего в чистой игре быть не должно.
+  for (const k of Object.keys(S)) delete S[k];
   Object.assign(S, raw && typeof raw === 'object' ? merge(base, raw) : base);
   // объекты могли добавиться в новой версии
   for (const c of COUNTERS) if (!S.counters[c.id]) S.counters[c.id] = { open: false, lvl: 1, cash: 0, clerk: 0 };

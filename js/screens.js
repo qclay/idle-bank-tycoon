@@ -1162,7 +1162,38 @@ function settingsView() {
   wrap.appendChild(toggle('Эффекты', 'монетки, вспышки и всплывающие числа', 'fx'));
   wrap.appendChild(toggle('Вибрация', 'отклик при постройке и наградах', 'haptics'));
   wrap.appendChild(h('<div class="empty">Если телефон греется — включите «Экономно».</div>').firstElementChild);
+
+  wrap.appendChild(h('<div class="sect">Опасная зона</div>').firstElementChild);
+  const wipe = h(`<button class="setrow setrow--danger">
+    <span class="setrow__t"><b>Начать заново</b><i>полный сброс: магазин, доли в сети, кристаллы, отзывы</i></span>
+    <span class="ic">${ic('i-warn', 'ic')}</span>
+  </button>`).firstElementChild;
+  wipe.addEventListener('click', confirmWipe);
+  wrap.appendChild(wipe);
   return wrap;
+}
+
+/** Полный сброс. Спрашиваем дважды: отменить это будет нельзя — прогресс живёт
+ *  на сервере, локальной копии, из которой можно было бы восстановить, нет. */
+function confirmWipe() {
+  const el = open({
+    title: 'Начать заново',
+    render: () => h(`<div class="card" style="padding:calc(16 * var(--du))">
+      <div class="row__name" style="justify-content:center;font-size:calc(17 * var(--du))">
+        Стереть весь прогресс?</div>
+      <div class="card__sub" style="margin-top:calc(6 * var(--du))">
+        Магазин, доли в сети, кристаллы, отзывы и награды исчезнут навсегда.
+        Вернуть их будет нельзя.</div>
+      </div>
+      <div class="list" id="acts"></div>`),
+  });
+  const acts = el.el.querySelector('#acts');
+  const no = h(btn('btn--v btn--wide', 'Оставить как есть', null)).firstElementChild;
+  no.addEventListener('click', () => close());
+  acts.appendChild(no);
+  const yes = h(btn('btn--gold btn--wide', 'Да, стереть всё', null)).firstElementChild;
+  yes.addEventListener('click', () => { close(); window.__wipe?.(); });
+  acts.appendChild(yes);
 }
 
 function toggle(name, hint, key) {

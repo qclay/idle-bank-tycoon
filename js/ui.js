@@ -155,6 +155,7 @@ const tags = new Map();
 // камерой. Реже нельзя: на фоне плавного зала они начинают дёргаться, и это
 // читается как тормоза. Текст переписываем только когда он изменился.
 export function tickWorldTags() {
+  tickGoal();
   tickRoomTitle();
   tickFoeMarker();
   tickNameTags();
@@ -237,6 +238,45 @@ function hint(id, text, x, y, seen) {
 }
 
 export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
+
+// ── Куда идти сейчас ─────────────────────────────────────────────────────────
+// Единственная подсказка на экране: стрелка в сторону дела, название дела и
+// расстояние. Когда дел нет — прямо говорим об этом: игроку важно понимать,
+// что можно ничего не делать, а не искать, что он упустил.
+
+let goalEl = null;
+let goalCalm = 0;
+function tickGoal() {
+  if (!goalEl) {
+    goalEl = document.getElementById('goal');
+    goalEl.addEventListener('click', () => haptic('light'));
+  }
+  const g = game.nextGoal();
+  if (!g) {
+    goalCalm += 1 / 60;
+    if (goalCalm > 1.2) {                       // не мигаем на каждую секунду затишья
+      goalEl.hidden = false;
+      goalEl.className = 'is-calm';
+      goalEl.querySelector('.goal__t').textContent = 'Всё под контролем';
+      goalEl.querySelector('.goal__d').textContent = '';
+      goalEl.querySelector('.goal__arrow').style.transform = 'rotate(0deg)';
+    }
+    return;
+  }
+  goalCalm = 0;
+  goalEl.hidden = false;
+  goalEl.className = g.hot ? 'is-hot' : '';
+  const t2 = goalEl.querySelector('.goal__t');
+  if (t2.textContent !== g.label) t2.textContent = g.label;
+  const dx = g.x - player.x, dy = g.y - player.y;
+  const d = Math.hypot(dx, dy);
+  goalEl.querySelector('.goal__d').textContent = d < 1.4 ? 'вы на месте' : `${Math.round(d)} шагов`;
+  // стрелку поворачиваем в экранных координатах, а не в тайловых
+  const a = scene.screenOf(g.x, g.y, 0), b2 = scene.screenOf(player.x, player.y, 0);
+  goalEl.querySelector('.goal__arrow').style.transform =
+    `rotate(${Math.atan2(a.y - b2.y, a.x - b2.x) * 180 / Math.PI}deg)`;
+  goalEl.classList.toggle('is-here', d < 1.4);
+}
 
 // ── Название комнаты ─────────────────────────────────────────────────────────
 // Вместо постоянных подписей по всему залу — короткая плашка при входе в

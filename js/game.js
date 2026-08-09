@@ -12,7 +12,7 @@ import * as fx from './fx.js';
 import * as reviews from './reviews.js';
 import {
   player, customers, clerks, runner, bagCap, clerkSpot, pickSpot, trayPos,
-  atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids, clerkAway,
+  atmPick, atmTray, counterDef, frontCustomer, syncStaff, refreshSolids, clerkAway, clerkList,
 } from './actors.js';
 
 // ── Зоны: постоянные бонусы на весь бизнес ───────────────────────────────────
@@ -160,6 +160,68 @@ export function pads() {
 }
 
 if (!S.padPaid) S.padPaid = {};
+
+// ── Что делать прямо сейчас ──────────────────────────────────────────────────
+// Магазин большой, денег в нём копится сразу в нескольких местах, и игрок
+// теряется: бежать к стойке, в кассу, к недовольному клиенту или на площадку?
+// Поэтому игра сама выбирает одно самое ценное дело и показывает только его.
+// Когда дел нет — так и говорит, чтобы можно было спокойно выдохнуть.
+
+const GOAL = { bagFull: 0.85, trayFull: 0.55 };
+
+export function nextGoal() {
+  // 1. Полная тележка — деньги в руках не работают
+  const cap = bagCap();
+  if (S.carry >= cap * GOAL.bagFull) {
+    return { kind: 'vault', x: VAULT.drop.x, y: VAULT.drop.y, label: 'Сдать выручку', hot: true };
+  }
+  // 2. Недовольный клиент — репутация тает, пока к нему не подошли
+  for (const k of customers) {
+    if (k.state === 'upset') return { kind: 'upset', x: k.x, y: k.y, label: 'Разобраться с клиентом', hot: true };
+  }
+  // 3. Оператор залип на складе — стойка стоит
+  for (const a of clerkList()) {
+    if (a.job === 'search' && a.slack) {
+      return { kind: 'stock', x: a.x, y: a.y, label: 'Проверить склад', hot: true };
+    }
+  }
+  // 4. Самый полный лоток
+  let best = null, bestFill = GOAL.trayFull;
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (!st.open) continue;
+    const fill = st.cash / trayCap(c);
+    if (fill > bestFill) { bestFill = fill; const p = pickSpot(c); best = { kind: 'pick', x: p.x, y: p.y, label: `Забрать: ${c.name}` }; }
+  }
+  for (const a of ATMS) {
+    const st = S.atms[a.id];
+    if (!st.open) continue;
+    const fill = st.cash / atmCap(a);
+    if (fill > bestFill) { bestFill = fill; const p = atmPick(a); best = { kind: 'pick', x: p.x, y: p.y, label: 'Забрать: постамат' }; }
+  }
+  if (best) return best;
+  // 5. Очередь стоит без оператора, а вы свободны
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (!st.open || (st.clerk > 0 && !clerkAway(c.id))) continue;
+    if (!frontCustomer(c.id)) continue;
+    const sp = clerkSpot(c);
+    return { kind: 'serve', x: sp.x, y: sp.y, label: `Обслужить: ${c.name}` };
+  }
+  // 6. Есть деньги на покупку — самая дешёвая из доступных
+  let buy = null;
+  for (const p of pads()) {
+    const left = p.cost - (S.padPaid[p.id] || 0);
+    if (left > S.cash + S.carry) continue;
+    if (!buy || left < buy.left) buy = { left, p };
+  }
+  if (buy) {
+    const p = buy.p;
+    return { kind: 'buy', x: p.x + p.w / 2, y: p.y + p.h / 2,
+             label: p.kind === 'up' ? `Улучшить: ${p.title}` : `Открыть: ${p.title}` };
+  }
+  return null;
+}
 
 // ── Престиж ──────────────────────────────────────────────────────────────────
 // Сколько долей в сети даст закрытие пункта прямо сейчас и что они дают.

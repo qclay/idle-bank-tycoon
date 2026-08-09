@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1B1236">
 <title>Пункт выдачи — Idle Tycoon</title>
 <link rel="icon" href="./assets/ui/coin.png">
-<link rel="stylesheet" href="./css/ui.css?v=1d1166d780">
+<link rel="stylesheet" href="./css/ui.css?v=56fe37078f">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -225,6 +225,13 @@
     <b class="carry__n" id="carryTxt">0</b>
   </div>
 
+  <!-- Одна подсказка на весь экран: куда идти и зачем -->
+  <button id="goal" hidden>
+    <i class="goal__arrow"></i>
+    <span class="goal__t"></span>
+    <b class="goal__d"></b>
+  </button>
+
   <div id="joy"><div id="joyBase"></div><div id="joyKnob"></div></div>
 
   <nav id="nav">
@@ -248,6 +255,6 @@
   </div>
 </div>
 
-<script type="module" src="./js/app.js?v=cbfad1f30b"></script>
+<script type="module" src="./js/app.js?v=4a69ae536f"></script>
 </body>
 </html>

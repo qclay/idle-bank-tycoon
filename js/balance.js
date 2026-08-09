@@ -128,15 +128,18 @@ export const CUSTOMER = {
 // ─── Персонал ────────────────────────────────────────────────────────────────
 
 export const STAFF = {
+  // Автоматизацию надо давать рано: пока её нет, игрок бегает за каждым рублём
+  // сам и быстро устаёт. Первый оператор и первый администратор должны быть по
+  // карману в первые десять минут — дальше цена растёт как обычно.
   clerk: {
     id: 'clerk', name: 'Оператор', desc: 'Сам выдаёт заказы на стойке',
     art: './assets/char/se_0.png',
-    cost: 5200, grow: 4.3, speedBase: 1, speedStep: 0.15, maxLvl: 20,
+    cost: 3400, grow: 4.3, speedBase: 1, speedStep: 0.15, maxLvl: 20,
   },
   runner: {
-    id: 'runner', name: 'Администратор', desc: 'Сам относит выручку в кассу',
+    id: 'runner', name: 'Администратор', desc: 'Сам собирает выручку и носит в кассу',
     art: './assets/char/nw_0.png',
-    cost: 26000, grow: 4.1, bagBase: 75, bagStep: 35, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
+    cost: 6200, grow: 4.1, bagBase: 75, bagStep: 35, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
   },
 };
 

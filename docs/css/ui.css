@@ -363,6 +363,27 @@ svg{width:100%;height:100%;display:block}
 
 .wtag.is-off{opacity:0;pointer-events:none}
 
+#goal{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--sab) + 96 * var(--du));z-index:22;
+  display:flex;align-items:center;gap:calc(8 * var(--du));
+  height:calc(40 * var(--du));padding:0 calc(16 * var(--du)) 0 calc(12 * var(--du));
+  border-radius:calc(20 * var(--du));background:var(--glass);
+  box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.16),
+             0 calc(4 * var(--du)) calc(14 * var(--du)) rgba(23,16,41,.4)}
+#goal .goal__arrow{width:calc(20 * var(--du));height:calc(20 * var(--du));flex:none;
+  background:#C4B5FD;clip-path:polygon(100% 50%, 22% 0, 44% 50%, 22% 100%);
+  transition:transform .12s linear}
+#goal .goal__t{color:#fff;font-size:calc(13 * var(--du));font-weight:900;white-space:nowrap}
+#goal .goal__d{color:rgba(255,255,255,.6);font-size:calc(11 * var(--du));font-weight:800;
+  white-space:nowrap}
+#goal.is-hot{box-shadow:inset 0 0 0 calc(1.8 * var(--du)) rgba(252,211,77,.9),
+             0 calc(4 * var(--du)) calc(14 * var(--du)) rgba(23,16,41,.4)}
+#goal.is-hot .goal__arrow{background:#FCD34D}
+#goal.is-here .goal__arrow{opacity:.35}
+#goal.is-calm{opacity:.6}
+#goal.is-calm .goal__arrow{display:none}
+#goal:active{transform:translateX(-50%) scale(.96)}
+
 .roomttl{position:absolute;left:50%;top:calc(var(--sat) + 206 * var(--du));
   transform:translate(-50%,calc(-8 * var(--du)));pointer-events:none;text-align:center;
   opacity:0;transition:opacity .35s ease,transform .35s ease}
@@ -594,6 +615,9 @@ svg{width:100%;height:100%;display:block}
 .setrow__sw::after{content:'';position:absolute;top:calc(3 * var(--du));left:calc(3 * var(--du));
   width:calc(20 * var(--du));height:calc(20 * var(--du));border-radius:50%;background:#fff;
   box-shadow:0 calc(1 * var(--du)) calc(3 * var(--du)) rgba(0,0,0,.25);transition:transform .16s}
+.setrow--danger{box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(226,74,106,.45)}
+.setrow--danger .setrow__t b{color:#DC2626}
+.setrow--danger .ic{width:calc(20 * var(--du));height:calc(20 * var(--du));color:#DC2626}
 .setrow.is-on .setrow__sw{background:#7C3AED}
 .setrow.is-on .setrow__sw::after{transform:translateX(calc(18 * var(--du)))}
 
