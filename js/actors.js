@@ -6,6 +6,7 @@ import { isoDir, clamp, dist } from './core.js';
 import * as scene from './scene.js';
 import * as reviews from './reviews.js';
 import * as smm from './smm.js';
+import * as nav from './nav.js';
 import { REP } from './balance.js';
 
 // ── Геометрия объектов ───────────────────────────────────────────────────────
@@ -25,7 +26,8 @@ export function atmTray(def) { return { x: def.x + 0.36, y: def.y + 0.35 }; }
 
 /** Непроходимые прямоугольники зала. */
 function solids() {
-  const out = [{ x0: VAULT.x, y0: VAULT.y, x1: VAULT.x + VAULT.w, y1: VAULT.y + VAULT.h + 0.2 }];
+  const out = [...nav.wallRects()];
+  out.push({ x0: VAULT.x, y0: VAULT.y, x1: VAULT.x + VAULT.w, y1: VAULT.y + VAULT.h + 0.2 });
   for (const c of COUNTERS) out.push({ x0: c.x, y0: c.y, x1: c.x + 2, y1: c.y + 0.62 });
   for (const a of ATMS) if (S.atms[a.id]?.open) out.push({ x0: a.x, y0: a.y, x1: a.x + 0.8, y1: a.y + 0.66 });
   for (const z of ZONES) if (S.zones?.[z.id]?.open) out.push({ x0: z.x, y0: z.y, x1: z.x + 2.2, y1: z.y + 1.2 });
@@ -33,6 +35,16 @@ function solids() {
 }
 let SOLIDS = null;
 export function refreshSolids() { SOLIDS = solids(); }
+
+/** Занята ли точка мебелью или стеной — нужно и логике, и тестам. */
+export function blocked(x, y, r = R) {
+  if (!SOLIDS) refreshSolids();
+  for (const s of SOLIDS) {
+    const nx = clamp(x, s.x0, s.x1), ny = clamp(y, s.y0, s.y1);
+    if (Math.hypot(x - nx, y - ny) < r) return true;
+  }
+  return false;
+}
 
 const R = 0.34;   // радиус актёра в тайлах
 
@@ -161,11 +173,11 @@ export function tickCustomers(dt, onServed) {
     if (k.state === 'walk') {
       const idx = queueIndex(k);
       const q = queueSpot(counterDef(k.counter), idx);
-      if (stepTo(k, q.x, q.y, CUSTOMER.speed, dt)) { k.state = 'wait'; k.t = 0; }
+      if (goTo(k, q.x, q.y, CUSTOMER.speed, dt)) { k.state = 'wait'; k.t = 0; }
     } else if (k.state === 'wait') {
       const idx = queueIndex(k);
       const q = queueSpot(counterDef(k.counter), idx);
-      stepTo(k, q.x, q.y, CUSTOMER.speed, dt);
+      goTo(k, q.x, q.y, CUSTOMER.speed, dt);
       k.waited = Math.min(1, k.t / CUSTOMER.patience);
       // Чем дольше очередь стоит, тем мрачнее лица: это видно с другого конца
       // зала и подсказывает, куда бежать.
@@ -200,9 +212,15 @@ export function tickCustomers(dt, onServed) {
       }
     } else if (k.state === 'leave') {
       // уходим наружу: столкновения выключены, иначе клипается о границу зала
-      stepTo(k, DOOR.x, HALL.h + 1.2, CUSTOMER.walkOff, dt, false);
-      k.view.alpha = Math.max(0, Math.min(1, (HALL.h + 0.4 - k.y) / 1.2));
-      if (k.y > HALL.h + 0.3) { kill(i); continue; }
+      // Сначала доходим до выхода по-человечески, через проёмы, и только на
+      // последнем шаге выключаем столкновения, чтобы не цепляться о границу.
+      if (!k.out) {
+        if (goTo(k, DOOR.x, HALL.h - 0.7, CUSTOMER.walkOff, dt)) k.out = true;
+      } else {
+        stepTo(k, DOOR.x, HALL.h + 1.2, CUSTOMER.walkOff, dt, false);
+        k.view.alpha = Math.max(0, Math.min(1, (HALL.h + 0.4 - k.y) / 1.2));
+        if (k.y > HALL.h + 0.3) { kill(i); continue; }
+      }
     }
     draw(k, dt);
   }
@@ -215,6 +233,7 @@ function spawn(c) {
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
     view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
     dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1, waited: 0, incident: null, mood: null,
+    path: null, pi: 0, out: false,
   };
   customers.push(k);
   enqueue(k);
@@ -272,16 +291,33 @@ export function frontCustomer(counterId) {
   return (k.state === 'wait' || k.state === 'serve') ? k : null;
 }
 
-function stepTo(k, tx, ty, sp, dt, solid = true) {
+function stepTo(k, tx, ty, sp, dt, solid = true, tol = 0.08) {
   const dx = tx - k.x, dy = ty - k.y;
   const d = Math.hypot(dx, dy);
-  if (d < 0.08) { k.moving = false; return true; }
+  if (d < tol) { k.moving = false; return true; }
   const step = Math.min(d, sp * dt);
   k.x += (dx / d) * step;
   k.y += (dy / d) * step;
   if (solid) collide(k);
   k.dir = isoDir(dx, dy);
   k.moving = true;
+  return false;
+}
+
+/** Идти к цели через комнаты. Прямой шаг оставлен внутри: маршрут — это просто
+ *  цепочка таких же шагов от проёма к проёму. */
+function goTo(k, tx, ty, sp, dt, solid = true) {
+  if (!k.path || Math.hypot((k.gx ?? 1e9) - tx, (k.gy ?? 1e9) - ty) > 0.4) {
+    k.path = nav.path(k.x, k.y, tx, ty);
+    k.pi = 0; k.gx = tx; k.gy = ty;
+  }
+  const p = k.path[k.pi];
+  if (!p) { k.path = null; return true; }
+  const last = k.pi >= k.path.length - 1;
+  if (stepTo(k, p.x, p.y, sp, dt, solid, last ? 0.08 : 0.3)) {
+    if (last) { k.path = null; return true; }
+    k.pi++;
+  }
   return false;
 }
 
@@ -390,7 +426,7 @@ export function tickRunner(dt, takeFrom, deposit) {
   }
   if (runner.state === 'go') {
     const p = runner.target.pick;
-    if (stepTo(runner, p.x, p.y, sp, dt)) {
+    if (goTo(runner, p.x, p.y, sp, dt)) {
       const room = runnerBag() - runner.load;
       const got = takeFrom(runner.target, room);
       runner.load += got;
@@ -399,7 +435,7 @@ export function tickRunner(dt, takeFrom, deposit) {
     }
   }
   if (runner.state === 'drop') {
-    if (stepTo(runner, VAULT.drop.x, VAULT.drop.y, sp, dt)) {
+    if (goTo(runner, VAULT.drop.x, VAULT.drop.y, sp, dt)) {
       deposit(runner.load);
       runner.load = 0;
       runner.state = 'seek';

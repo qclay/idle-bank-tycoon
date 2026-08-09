@@ -9,7 +9,7 @@ import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.
 
 import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
 import * as fx from './fx.js';
-import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR, DISTRICT } from './balance.js';
+import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR, DISTRICT, ROOMS, WALLS, WALL_T, DOORWAYS } from './balance.js';
 
 export const INK = 0x3f2b18;
 
@@ -129,6 +129,7 @@ export async function initScene(host, onProgress = () => {}) {
   app.stage.addChild(world);
 
   buildGround();
+  buildWalls();
   fx.initFx(fxLayer, document.getElementById('worldUI'), tex.coin, screenOf);
   buildTraffic();
   fitCamera();
@@ -194,18 +195,31 @@ const PARCEL = [0xF4A261, 0xE9C46A, 0x8ECae6, 0xB5E48C, 0xF2A6C2, 0xC7B9F5];
 function buildGround() {
   const g = new Graphics();
 
-  // плитка
-  for (let y = 0; y < HALL.h; y++) {
-    for (let x = 0; x < HALL.w; x++) {
-      const c = (x + y) % 2 ? FLOOR_A : FLOOR_B;
-      isoRhomb(g, x, y, x + 1, y + 1, 0, c);
+  // Плитка своя в каждом помещении: по полу сразу видно, где кончается одна
+  // комната и начинается другая.
+  for (const r of ROOMS) {
+    for (let y = Math.floor(r.y0); y < r.y1; y++) {
+      for (let x = Math.floor(r.x0); x < r.x1; x++) {
+        const c = (x + y) % 2 ? r.floor : shade(r.floor, -0.045);
+        isoRhomb(g, x, y, x + 1, y + 1, 0, c);
+      }
     }
+    // тонкий кант по границе помещения
+    isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.001, 0, { alpha: 0, ow: 1.6, oc: 0x8c7fb0, oa: 0.3 });
   }
-  // фирменная дорожка: от входа вдоль зала и к стойкам
-  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.002, CARPET, { alpha: 0.5 });
-  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.002, CARPET, { alpha: 0.5 });
-  isoRhomb(g, 5.2, 4.2, 16.6, 5.6, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.4 });
-  isoRhomb(g, 14.6, 5.6, 16.6, 12.2, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.4 });
+
+  // фирменная дорожка: от входа через торговый зал к проёму в пункт выдачи
+  isoRhomb(g, 11.1, 6.2, 13.1, 14.6, 0.002, CARPET, { alpha: 0.42 });
+  isoRhomb(g, 5.2, 3.4, 18.6, 4.8, 0.002, CARPET, { alpha: 0.42 });
+  isoRhomb(g, 11.1, 6.2, 13.1, 14.6, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.36 });
+  isoRhomb(g, 5.2, 3.4, 18.6, 4.8, 0.003, 0, { alpha: 0, ow: 2, oc: 0x5B21B6, oa: 0.36 });
+
+  // порожки в проёмах — глазу нужна подсказка, где проход
+  for (const d of DOORWAYS) {
+    const vertical = isVerticalDoor(d);
+    if (vertical) isoRhomb(g, d.x - 0.16, d.y - d.w / 2, d.x + 0.16, d.y + d.w / 2, 0.004, 0xC4B5FD, { alpha: 0.8 });
+    else isoRhomb(g, d.x - d.w / 2, d.y - 0.16, d.x + d.w / 2, d.y + 0.16, 0.004, 0xC4B5FD, { alpha: 0.8 });
+  }
 
   // контур пола
   isoRhomb(g, 0, 0, HALL.w, HALL.h, 0.004, 0x000000, { alpha: 0, ow: 2.5, oc: 0x6b5a44, oa: 0.35 });
@@ -247,8 +261,8 @@ function buildGround() {
       }
     }
   };
-  rack(1.2, 0.05, 4.6, 0.5, false);
-  rack(8.2, 0.05, 13.4, 0.5, false);
+  rack(4.6, 0.05, 9.4, 0.5, false);
+  rack(14.2, 0.05, 19.4, 0.5, false);
   rack(0.05, 9.2, 0.5, 12.3, true);
 
   ground.addChild(g);
@@ -731,6 +745,59 @@ export function setCarryStack(view, ratio) {
     s.y = -i * 7;
     view.__load.addChild(s);
   }
+}
+
+// ── Внутренние перегородки ───────────────────────────────────────────────────
+// Стена длиной в полкомнаты не может иметь одну глубину: актёр у её дальнего
+// конца должен быть за ней, у ближнего — перед ней. Поэтому каждую стену
+// режем на куски по тайлу и сортируем поштучно.
+
+const PART = 0xF7F4FD;          // цвет перегородки
+const PART_TOP = 0x7C3AED;      // фирменный кант поверху
+const PART_H = 1.55;            // высота: комнаты читаются, но зал не закрыт
+
+function buildWalls() {
+  const t = WALL_T / 2;
+  for (const w of WALLS) {
+    const vertical = w.x != null;
+    const from = vertical ? w.y0 : w.x0;
+    const to = vertical ? w.y1 : w.x1;
+    for (let a = from; a < to - 1e-6; a += 1) {
+      const b = Math.min(a + 1, to);
+      const g = new Graphics();
+      const x0 = vertical ? w.x - t : a;
+      const x1 = vertical ? w.x + t : b;
+      const y0 = vertical ? a : w.y - t;
+      const y1 = vertical ? b : w.y + t;
+      isoBox(g, x0, y0, x1, y1, 0, PART_H, PART,
+             { top: 0xFFFFFF, right: shade(PART, -0.2), left: shade(PART, -0.06), sheen: false });
+      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, PART_H, 0.1, PART_TOP, { sheen: false });
+      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, 0, 0.09, PART_TOP, { sheen: false });
+      const c = new Container();
+      c.addChild(g);
+      c.zIndex = depth(x1, y1, 0);
+      items.addChild(c);
+    }
+  }
+  // Косяки по краям проёмов: без них перегородка обрывается в воздухе.
+  for (const d of DOORWAYS) {
+    const vertical = isVerticalDoor(d);
+    for (const sgn of [-1, 1]) {
+      const g = new Graphics();
+      const cx = vertical ? d.x : d.x + sgn * (d.w / 2 + 0.09);
+      const cy = vertical ? d.y + sgn * (d.w / 2 + 0.09) : d.y;
+      isoBox(g, cx - 0.14, cy - 0.14, cx + 0.14, cy + 0.14, 0, PART_H + 0.18, PART_TOP, { sheen: false });
+      const c = new Container();
+      c.addChild(g);
+      c.zIndex = depth(cx + 0.14, cy + 0.14, 0);
+      items.addChild(c);
+    }
+  }
+}
+
+function isVerticalDoor(d) {
+  const a = ROOMS.find((r) => r.id === d.a), b = ROOMS.find((r) => r.id === d.b);
+  return Math.abs(a.x1 - b.x0) < 1e-6 || Math.abs(b.x1 - a.x0) < 1e-6;
 }
 
 /** Клиент или сотрудник: изометрический спрайт человека на 4 направления. */

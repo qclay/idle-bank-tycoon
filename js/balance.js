@@ -4,23 +4,61 @@
 // Тайловая сетка. Стойка занимает 2×1: (x, y) и (x+1, y).
 // Оператор стоит за стойкой (y-1), клиент подходит спереди (y+1).
 
-export const HALL = { w: 24, h: 15 };
+export const HALL = { w: 28, h: 15 };
 
-export const VAULT = { x: 1, y: 1, w: 2.6, h: 1.6, drop: { x: 2.3, y: 3.5 } };
+export const VAULT = { x: 0.4, y: 0.9, w: 2.6, h: 1.6, drop: { x: 1.7, y: 3.2 } };
 
 // Улица снаружи: тротуар, дорога, дальний тротуар с фасадами
 export const STREET = { walk: 1.6, road: 2.6, far: 1.2, facade: 2.2 };
-export const DOOR = { x: 21.5, y: 14.4 };          // вход: отсюда приходят клиенты
+export const DOOR = { x: 12, y: 14.4 };            // вход: отсюда приходят клиенты
 export const START = { x: 12, y: 11 };             // где игрок стоит на старте
 
+// ─── Комнаты магазина ────────────────────────────────────────────────────────
+// Здание — не один прямоугольник, а настоящие помещения со стенами и дверными
+// проёмами. Каждый житель зала ходит между комнатами через проёмы, поэтому
+// комнаты и двери описаны здесь же, рядом с планировкой.
+
+export const ROOMS = [
+  { id: 'cash',    name: 'Касса',        x0: 0,  y0: 0, x1: 4,  y1: 4,  floor: 0xEDE7F8 },
+  { id: 'lockers', name: 'Постаматы',    x0: 0,  y0: 4, x1: 4,  y1: 15, floor: 0xE7E2F2 },
+  { id: 'pickup',  name: 'Пункт выдачи', x0: 4,  y0: 0, x1: 20, y1: 6,  floor: 0xF2EEF9 },
+  { id: 'sales',   name: 'Торговый зал', x0: 4,  y0: 6, x1: 20, y1: 15, floor: 0xF1EEF7 },
+  { id: 'service', name: 'Сервис',       x0: 20, y0: 0, x1: 24, y1: 15, floor: 0xEDEAF6 },
+  { id: 'stock',   name: 'Склад',        x0: 24, y0: 0, x1: 28, y1: 15, floor: 0xD9D2E6, dark: true },
+];
+
+export const WALL_T = 0.3;                        // толщина внутренней стены
+
+// Стены заданы кусками: промежутки между ними и есть дверные проёмы.
+export const WALLS = [
+  { x: 4,  y0: 0,    y1: 2.6 },  { x: 4,  y0: 3.8,  y1: 9.4 },  { x: 4,  y0: 10.8, y1: 15 },
+  { y: 4,  x0: 0,    x1: 1.4 },  { y: 4,  x0: 2.8,  x1: 4 },
+  { y: 6,  x0: 4,    x1: 10.8 }, { y: 6,  x0: 13.4, x1: 20 },
+  { x: 20, y0: 0,    y1: 2.2 },  { x: 20, y0: 3.6,  y1: 9.4 },  { x: 20, y0: 10.8, y1: 15 },
+  { x: 24, y0: 0,    y1: 6.6 },  { x: 24, y0: 8.0,  y1: 15 },
+];
+
+// Проёмы: через них строится маршрут из комнаты в комнату.
+export const DOORWAYS = [
+  { a: 'cash',    b: 'pickup',  x: 4,    y: 3.2,  w: 1.2 },
+  { a: 'cash',    b: 'lockers', x: 2.1,  y: 4,    w: 1.4 },
+  { a: 'lockers', b: 'sales',   x: 4,    y: 10.1, w: 1.4 },
+  { a: 'pickup',  b: 'sales',   x: 12.1, y: 6,    w: 2.6 },
+  { a: 'pickup',  b: 'service', x: 20,   y: 2.9,  w: 1.4 },
+  { a: 'sales',   b: 'service', x: 20,   y: 10.1, w: 1.4 },
+  { a: 'service', b: 'stock',   x: 24,   y: 7.3,  w: 1.4 },
+];
+
 // Стойки выдачи: cost — цена открытия, base — выручка с одного клиента на 1 ур.
+// Стойки расставлены по комнатам: три в пункте выдачи, три в торговом зале.
+// Центральный проход (x 11…13.4) от входа к проёму держим свободным.
 export const COUNTERS = [
-  { id: 'c1', name: 'Выдача заказов', x: 6,  y: 2, cost: 0,      base: 12,    tone: 0x7C3AED },
-  { id: 'c2', name: 'Примерочная',    x: 11, y: 2, cost: 1200,   base: 44,    tone: 0x0EA5E9 },
-  { id: 'c3', name: 'Приём возвратов',x: 16, y: 2, cost: 26000,  base: 165,   tone: 0x22C55E },
-  { id: 'c4', name: 'Крупногабарит',  x: 6,  y: 8, cost: 620000, base: 640,   tone: 0xF59E0B },
-  { id: 'c5', name: 'Экспресс-выдача',x: 11, y: 8, cost: 1.9e7,  base: 2600,  tone: 0xEC4899 },
-  { id: 'c6', name: 'Premium-зона',   x: 16, y: 8, cost: 7.2e8,  base: 10500, tone: 0x14B8A6 },
+  { id: 'c1', name: 'Выдача заказов', x: 5,    y: 2,  room: 'pickup', cost: 0,      base: 12,    tone: 0x7C3AED },
+  { id: 'c2', name: 'Примерочная',    x: 9.4,  y: 2,  room: 'pickup', cost: 1200,   base: 44,    tone: 0x0EA5E9 },
+  { id: 'c3', name: 'Приём возвратов',x: 16.4, y: 2,  room: 'pickup', cost: 26000,  base: 165,   tone: 0x22C55E },
+  { id: 'c4', name: 'Крупногабарит',  x: 5,    y: 8,  room: 'sales',  cost: 620000, base: 640,   tone: 0xF59E0B },
+  { id: 'c5', name: 'Экспресс-выдача',x: 15.6, y: 8,  room: 'sales',  cost: 1.9e7,  base: 2600,  tone: 0xEC4899 },
+  { id: 'c6', name: 'Premium-зона',   x: 15.6, y: 12, room: 'sales',  cost: 7.2e8,  base: 10500, tone: 0x14B8A6 },
 ];
 
 // Постаматы: выдают заказы сами, выручка копится в ячейках — её тоже нужно забирать
@@ -34,16 +72,16 @@ export const ATMS = [
 // Зоны пункта: разовая постройка с постоянным эффектом на весь бизнес.
 // Ставятся на площадку в зале, уровни качаются в окне «Бизнес».
 export const ZONES = [
-  { id: 'z_coffee', name: 'Кофе-точка',  x: 20.6, y: 2.2,  cost: 120000,  ic: 'i-cup',
+  { id: 'z_coffee', name: 'Кофе-точка',  x: 21.2, y: 2.2,  cost: 120000,  ic: 'i-cup',
     tone: 0xF59E0B, effect: 'spawn',   step: 0.08, grow: 1.9, max: 20,
     desc: 'Клиенты приходят чаще' },
-  { id: 'z_fit',    name: 'Примерочные', x: 20.6, y: 5.6,  cost: 4.2e6, ic: 'i-fit',
+  { id: 'z_fit',    name: 'Примерочные', x: 21.2, y: 5.6,  cost: 4.2e6, ic: 'i-fit',
     tone: 0xEC4899, effect: 'pay',     step: 0.09, grow: 1.95, max: 20,
     desc: 'Клиенты платят больше' },
-  { id: 'z_sort',   name: 'Сортировка',  x: 20.6, y: 9.0,  cost: 7.5e7,  ic: 'i-sort',
+  { id: 'z_sort',   name: 'Сортировка',  x: 21.2, y: 9.0,  cost: 7.5e7,  ic: 'i-sort',
     tone: 0x0EA5E9, effect: 'speed',   step: 0.09, grow: 2.0, max: 20,
     desc: 'Операторы работают быстрее' },
-  { id: 'z_load',   name: 'Погрузка',    x: 20.6, y: 12.4, cost: 9.5e8,  ic: 'i-truck',
+  { id: 'z_load',   name: 'Погрузка',    x: 21.2, y: 12.2, cost: 9.5e8,  ic: 'i-truck',
     tone: 0x22C55E, effect: 'offline',  step: 0.12, grow: 2.0, max: 20,
     desc: 'Больше дохода, пока вас нет' },
 ];
@@ -52,11 +90,11 @@ export const ZONES = [
 
 export const UPGRADES = {
   // Пад стоит в зале, игрок встаёт на него и держит — деньги списываются
-  bag:   { id: 'bag',   name: 'Тележка',  desc: 'Больше выручки за раз', x: 6.0,  y: 12.6,
+  bag:   { id: 'bag',   name: 'Тележка',  desc: 'Больше выручки за раз', x: 4.8,  y: 13.2,
            cost: 260,  grow: 1.55, step: 6,    base: 12,  max: 60, ic: 'i-cart' },
-  boots: { id: 'boots', name: 'Кроссовки',desc: 'Скорость ходьбы',       x: 9.6,  y: 12.6,
+  boots: { id: 'boots', name: 'Кроссовки',desc: 'Скорость ходьбы',       x: 7.0,  y: 13.2,
            cost: 420,  grow: 1.62, step: 0.26, base: 4.3, max: 30, ic: 'i-run' },
-  vault: { id: 'vault', name: 'Касса',    desc: 'Множитель выручки',     x: 13.2, y: 12.6,
+  vault: { id: 'vault', name: 'Касса',    desc: 'Множитель выручки',     x: 9.2,  y: 13.2,
            cost: 1500, grow: 1.7,  step: 0.12, base: 1,   max: 40, ic: 'i-coin' },
 };
 

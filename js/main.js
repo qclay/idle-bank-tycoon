@@ -11,6 +11,7 @@ import * as screens from './screens.js';
 import * as district from './district.js';
 import * as reviews from './reviews.js';
 import * as smm from './smm.js';
+import * as nav from './nav.js';
 import { initTG, isTG, pay, initDataRaw, startParam, invite } from './tg.js';
 import * as coop from './coop.js';
 import * as net from './net.js';
@@ -407,5 +408,5 @@ boot().catch((e) => {
 });
 
 // отладочный доступ для тестов
-window.__game = { S, game, actors, scene, ui, screens, district, reviews, smm, net, coop };
+window.__game = { S, game, actors, scene, ui, screens, district, reviews, smm, net, coop, nav };
 window.__balance = BAL;   // для инструментов замера темпа
