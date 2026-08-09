@@ -130,6 +130,43 @@ export function staff() {
   });
 }
 
+// ── Карточка объекта ─────────────────────────────────────────────────────────
+// Крупная иллюстрация в цвете самого объекта, под ней — что он даёт, и одна
+// главная кнопка. Раньше две равные кнопки спорили за внимание, а иконка была
+// с ноготь: понять с одного взгляда, что тут происходит, было нельзя.
+
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+function mix(n, k) {
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v + (k > 0 ? (255 - v) * k : v * k))));
+  return hex((f(r) << 16) | (f(g) << 8) | f(b));
+}
+
+function bizCard({ tone, icon, title, level, main, tags = [], actions = [], dim = false }) {
+  const el = h(`<div class="bcard${dim ? ' is-dim' : ''}">
+    <div class="bcard__top">
+      <span class="bcard__art" style="--c1:${mix(tone, 0.18)};--c2:${mix(tone, -0.3)}">
+        ${ic(icon, 'ic')}
+        ${level != null ? `<i class="bcard__lvl">${level}</i>` : ''}
+      </span>
+      <div class="bcard__b">
+        <div class="bcard__t">${esc(title)}</div>
+        <div class="bcard__s">${main}</div>
+        ${tags.length ? `<div class="bcard__tags">${tags.join('')}</div>` : ''}
+      </div>
+    </div>
+    ${actions.length ? '<div class="bcard__acts"></div>' : ''}
+  </div>`).firstElementChild;
+  const box = el.querySelector('.bcard__acts');
+  actions.forEach((a, i) => {
+    const b = h(btn(`${a.cls || 'btn--v'}${i === 0 ? ' btn--main' : ''}`, a.label, a.price ?? null,
+                    'i-coin', !!a.off)).firstElementChild;
+    if (!a.off && a.onClick) b.addEventListener('click', a.onClick);
+    box.appendChild(b);
+  });
+  return el;
+}
+
 function staffView() {
   const wrap = document.createElement('div');
   const list = document.createElement('div');
@@ -141,22 +178,19 @@ function staffView() {
     const upC = counterUpCost(c);
     const hireC = clerkCost(c);
     const maxed = st.clerk >= STAFF.clerk.maxLvl;
-    const row = h(`<div class="row row--two">
-      <span class="tile">${ic('i-desk', 'ic')}</span>
-      <div class="row__name">${esc(c.name)}<span class="pill">ур. ${st.lvl}</span></div>
-      <div class="row__sub">${ic('i-coin')}${fmt(counterPay(c))}
-        <span class="nx">→ ${fmt(counterPay(c) * 1.14)}</span></div>
-      <div class="row__sub">${st.clerk
-        ? `<span class="pill pill--ok">оператор ур. ${st.clerk}</span> ×${clerkSpeed(c).toFixed(2)}`
-        : '<span class="pill pill--gold">без оператора</span>'}</div>
-      ${btn('btn--ok btn--a', 'Улучшить', fmt(upC), 'i-coin', S.cash < upC)}
-      ${btn('btn--v btn--b', maxed ? 'Максимум' : st.clerk ? 'Оператор +' : 'Оператор',
-            maxed ? null : fmt(hireC), 'i-coin', maxed || S.cash < hireC)}
-    </div>`).firstElementChild;
-    const [bUp, bHire] = row.querySelectorAll('button');
-    if (S.cash >= upC) bUp.addEventListener('click', () => { if (upgradeCounter(c)) { haptic(); refresh(); } });
-    if (!maxed && S.cash >= hireC) bHire.addEventListener('click', () => {
-      if (hireClerk(c)) { haptic('success'); toast(`${c.name}: оператор нанят`); refresh(); }
+    const row = bizCard({
+      tone: c.tone, icon: 'i-desk', title: c.name, level: st.lvl,
+      main: `${ic('i-coin')}<b>${fmt(counterPay(c))}</b> за клиента <span class="nx">→ ${fmt(counterPay(c) * 1.14)}</span>`,
+      tags: [st.clerk
+        ? `<span class="pill pill--ok">оператор ур. ${st.clerk}</span><span class="pill">×${clerkSpeed(c).toFixed(2)}</span>`
+        : '<span class="pill pill--gold">без оператора</span>'],
+      actions: [
+        { cls: 'btn--ok', label: 'Улучшить', price: fmt(upC), off: S.cash < upC,
+          onClick: () => { if (upgradeCounter(c)) { haptic(); refresh(); } } },
+        { cls: 'btn--v', label: maxed ? 'Максимум' : st.clerk ? 'Оператор +' : 'Оператор',
+          price: maxed ? null : fmt(hireC), off: maxed || S.cash < hireC,
+          onClick: () => { if (hireClerk(c)) { haptic('success'); toast(`${c.name}: оператор нанят`); refresh(); } } },
+      ],
     });
     list.appendChild(row);
   }
@@ -165,16 +199,12 @@ function staffView() {
     const st = S.atms[a.id];
     if (!st.open) continue;
     const upC = atmUpCost(a);
-    const row = h(`<div class="row">
-      <span class="tile tile--cyan">${ic('i-locker', 'ic')}</span>
-      <div class="row__name">${esc(a.name)}<span class="pill">ур. ${st.lvl}</span></div>
-      <div class="row__sub">${ic('i-coin')}${fmt(atmRate(a))} в секунду</div>
-      ${btn('btn--ok btn--row', 'Улучшить', fmt(upC), 'i-coin', S.cash < upC)}
-    </div>`).firstElementChild;
-    if (S.cash >= upC) row.querySelector('button').addEventListener('click', () => {
-      if (upgradeAtm(a)) { haptic(); refresh(); }
-    });
-    list.appendChild(row);
+    list.appendChild(bizCard({
+      tone: a.tone, icon: 'i-locker', title: a.name, level: st.lvl,
+      main: `${ic('i-coin')}<b>${fmt(atmRate(a))}</b> в секунду, пока вы заняты другим`,
+      actions: [{ cls: 'btn--ok', label: 'Улучшить', price: fmt(upC), off: S.cash < upC,
+                  onClick: () => { if (upgradeAtm(a)) { haptic(); refresh(); } } }],
+    }));
   }
 
   if (!list.children.length) list.innerHTML = '<div class="empty">Откройте первую стойку в зале</div>';
@@ -191,29 +221,21 @@ function zonesView() {
   for (const z of ZONES) {
     const st = S.zones?.[z.id] || { open: false, lvl: 1 };
     if (!st.open) {
-      list.appendChild(h(`<div class="row" style="opacity:.62">
-        <span class="tile">${ic('i-lock', 'ic')}</span>
-        <div class="row__name">${esc(z.name)}</div>
-        <div class="row__sub">${esc(z.desc)} · постройте в зале за ${fmt(z.cost)}</div>
-      </div>`).firstElementChild);
+      list.appendChild(bizCard({
+        tone: 0x9a8fb5, icon: 'i-lock', title: z.name, dim: true,
+        main: `${esc(z.desc)} · площадка в сервисной зоне, ${fmt(z.cost)}`,
+      }));
       continue;
     }
     const cost = zoneUpCost(z);
     const maxed = st.lvl >= z.max;
-    const tone = z.effect === 'pay' ? 'tile--gold' : z.effect === 'speed' ? 'tile--cyan'
-               : z.effect === 'offline' ? 'tile--ok' : '';
-    const row = h(`<div class="row">
-      <span class="tile ${tone}">${ic(z.ic, 'ic')}</span>
-      <div class="row__name">${esc(z.name)}<span class="pill">ур. ${st.lvl}</span></div>
-      <div class="row__sub"><span class="pill pill--ok">+${Math.round(z.step * st.lvl * 100)}%</span>
-        ${EFF[z.effect]}</div>
-      ${btn('btn--ok btn--row', maxed ? 'Максимум' : 'Улучшить', maxed ? null : fmt(cost),
-            'i-coin', maxed || S.cash < cost)}
-    </div>`).firstElementChild;
-    if (!maxed && S.cash >= cost) row.querySelector('button').addEventListener('click', () => {
-      if (upgradeZone(z)) { haptic(); refresh(); }
-    });
-    list.appendChild(row);
+    list.appendChild(bizCard({
+      tone: z.tone, icon: z.ic, title: z.name, level: st.lvl,
+      main: `<span class="pill pill--ok">+${Math.round(z.step * st.lvl * 100)}%</span> ${EFF[z.effect]}`,
+      actions: [{ cls: 'btn--ok', label: maxed ? 'Максимум' : 'Улучшить',
+                  price: maxed ? null : fmt(cost), off: maxed || S.cash < cost,
+                  onClick: () => { if (upgradeZone(z)) { haptic(); refresh(); } } }],
+    }));
   }
   wrap.appendChild(list);
   wrap.appendChild(h(`<div class="sect">Суммарно от зон</div>`).firstElementChild);

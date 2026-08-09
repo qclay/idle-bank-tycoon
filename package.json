@@ -30,6 +30,7 @@
     "social": "node tools/social.mjs",
     "feed": "node tools/feed.mjs",
     "stock": "node tools/stock.mjs",
+    "ui": "node tools/ui.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

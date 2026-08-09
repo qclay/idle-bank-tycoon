@@ -183,24 +183,34 @@
         <span class="cap__ic"><svg><use href="#i-coin"/></svg></span>
         <b class="cap__v" id="cash">0</b>
       </div>
-      <button class="cap cap--gem" id="goldPill">
-        <span class="cap__ic"><svg><use href="#i-gem"/></svg></span>
-        <b class="cap__v" id="gold">0</b>
-        <i class="cap__add">+</i>
-      </button>
-      <button class="cap cap--gear" id="gearBtn" aria-label="Настройки">
-        <span class="cap__ic"><svg><use href="#i-gear"/></svg></span>
-      </button>
+      <div class="hud-right">
+        <button class="cap cap--gem" id="goldPill">
+          <span class="cap__ic"><svg><use href="#i-gem"/></svg></span>
+          <b class="cap__v" id="gold">0</b>
+          <i class="cap__add">+</i>
+        </button>
+        <button class="cap cap--gear" id="gearBtn" aria-label="Настройки">
+          <span class="cap__ic"><svg><use href="#i-gear"/></svg></span>
+        </button>
+      </div>
     </div>
-    <button class="rep" id="repPill">
-      <span class="rep__ic"><svg><use href="#i-star"/></svg></span>
-      <b class="rep__v" id="repV">4.2</b>
-      <i class="badge" id="repBadge" hidden></i>
-    </button>
-    <div class="lvl">
-      <span class="lvl__n" id="lvlN">1</span>
-      <span class="lvl__track"><i class="lvl__fill" id="lvlFill"></i></span>
-      <span class="lvl__num" id="xpNum">0 / 0</span>
+
+    <!-- одна полоса состояния вместо трёх плавающих плашек -->
+    <div class="strip">
+      <button class="strip__b strip__rep" id="repPill">
+        <span class="ic"><svg><use href="#i-star"/></svg></span>
+        <b id="repV">4.2</b>
+        <i class="badge" id="repBadge" hidden></i>
+      </button>
+      <div class="strip__lvl">
+        <span class="lvl__n" id="lvlN">1</span>
+        <span class="lvl__track"><i class="lvl__fill" id="lvlFill"></i></span>
+        <span class="lvl__num" id="xpNum">0 / 0</span>
+      </div>
+      <button class="strip__b strip__coop" id="coopChip">
+        <span class="ic"><svg><use href="#i-staff"/></svg></span>
+        <b id="coopN">1</b>
+      </button>
     </div>
   </header>
 

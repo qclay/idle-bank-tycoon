@@ -12,6 +12,7 @@ import { clerkSpot, player, bagCap } from './actors.js';
 import * as actors from './actors.js';
 import { dist } from './core.js';
 import * as scene from './scene.js';
+import * as nav from './nav.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -141,6 +142,7 @@ const tags = new Map();
 // камерой. Реже нельзя: на фоне плавного зала они начинают дёргаться, и это
 // читается как тормоза. Текст переписываем только когда он изменился.
 export function tickWorldTags() {
+  tickRoomTitle();
   tickFoeMarker();
   tickNameTags();
   tickMoods();
@@ -172,11 +174,20 @@ export function tickWorldTags() {
     // Вдвоём на одной площадке стройка идёт вдвое быстрее — это надо видеть.
     t.classList.toggle('wtag--crew', padState.id === p.id && padState.crew > 1);
 
+    // Три состояния вместо двух. Раньше все ценники висели во весь рост
+    // одновременно и зал превращался в кашу из табличек. Теперь подробности
+    // видно там, где стоит игрок, соседние помещения показывают только
+    // кружок-подсказку, а дальние — ничего.
     const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
-    // Рядом — полная подпись, издалека — компактный ценник: иначе таблички
-    // наезжают друг на друга и закрывают зал.
-    const near = dist(player.x, player.y, cx, cy) < 2.9;
-    t.classList.toggle('is-far', !near);
+    const here = nav.roomAt(cx, cy);
+    const my = nav.roomAt(player.x, player.y);
+    const d = dist(player.x, player.y, cx, cy);
+    const sameRoom = here && my && here.id === my.id;
+    const near = d < 3.4 && sameRoom;
+    const mode = near ? 'full' : (sameRoom || d < 6) ? 'dot' : 'off';
+    t.classList.toggle('is-far', mode === 'dot');
+    t.classList.toggle('is-off', mode === 'off');
+    if (mode === 'off') continue;
     // рядом поднимаем повыше, иначе табличка накрывает героя
     const s = scene.screenOf(cx, cy, near ? 1.35 : 0.4);
     t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
@@ -212,6 +223,38 @@ function hint(id, text, x, y, seen) {
 }
 
 export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear(); }
+
+// ── Название комнаты ─────────────────────────────────────────────────────────
+// Вместо постоянных подписей по всему залу — короткая плашка при входе в
+// помещение. Так понятно, где ты находишься, и ничего не висит над головой
+// всю игру.
+
+let roomNow = '';
+let roomEl = null;
+let roomT = 0;
+function tickRoomTitle() {
+  const r = nav.roomAt(player.x, player.y);
+  const id = r?.id || '';
+  if (!roomEl) {
+    roomEl = document.createElement('div');
+    roomEl.className = 'roomttl';
+    els.worldUI.appendChild(roomEl);
+  }
+  if (id !== roomNow) {
+    roomNow = id;
+    roomT = id ? 2.4 : 0;
+    if (id) {
+      roomEl.innerHTML = `<b>${r.name}</b>${r.dark ? '<i>тут не горит свет</i>' : ''}`;
+      roomEl.classList.remove('is-on');
+      void roomEl.offsetWidth;
+      roomEl.classList.add('is-on');
+    }
+  }
+  if (roomT > 0) {
+    roomT -= 1 / 60;
+    if (roomT <= 0) roomEl.classList.remove('is-on');
+  }
+}
 
 // ── Настроение клиентов ──────────────────────────────────────────────────────
 // Значок над головой — не картинка, а кнопка: по нему и разбирают претензию.
@@ -290,29 +333,14 @@ function tickNameTags() {
   for (const [id, el] of nameTags) if (!live.has(id)) { el.remove(); nameTags.delete(id); }
 }
 
-/** Кто сейчас в зале. В своём пункте зовёт друга, в гостях — уводит домой. */
+/** Сколько нас в зале — короткой цифрой в полосе состояния. Подробности и
+ *  приглашение живут на своём экране, в шапке им не место. */
 export function showCoop() {
-  let el = document.getElementById('coopChip');
-  if (!el) {
-    el = document.createElement('button');
-    el.id = 'coopChip';
-    el.className = 'coopchip';
-    el.addEventListener('click', () => window.__openTab('coop'));
-    document.getElementById('hud').appendChild(el);
-  }
+  const el = document.getElementById('coopChip');
+  if (!el) return;
   const list = others();
   const away = visiting();
-  const ic = (id) => `<span class="ic"><svg><use href="#i-${id}"/></svg></span>`;
-  if (away) {
-    const host = list.find((p) => p.id === coop.roomId);
-    el.innerHTML = coop.hostOnline
-      ? `${ic('staff')}В гостях${host ? ` у ${host.name}` : ''}`
-      : `${ic('staff')}Хозяин не в сети`;
-  } else if (list.length) {
-    el.innerHTML = `${ic('staff')}${list.map((p) => p.name).join(', ')} помогает`;
-  } else {
-    el.innerHTML = `${ic('staff')}Позвать друга`;
-  }
+  el.querySelector('b').textContent = away && !coop.hostOnline ? '—' : String(list.length + 1);
   el.classList.toggle('is-live', list.length > 0);
   el.classList.toggle('is-away', away);
 }
