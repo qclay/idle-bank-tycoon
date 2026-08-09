@@ -19,12 +19,14 @@ export const START = { x: 12, y: 11 };             // где игрок стои
 // комнаты и двери описаны здесь же, рядом с планировкой.
 
 export const ROOMS = [
-  { id: 'cash',    name: 'Касса',        x0: 0,  y0: 0, x1: 4,  y1: 4,  floor: 0xEDE7F8 },
-  { id: 'lockers', name: 'Постаматы',    x0: 0,  y0: 4, x1: 4,  y1: 15, floor: 0xE7E2F2 },
-  { id: 'pickup',  name: 'Пункт выдачи', x0: 4,  y0: 0, x1: 20, y1: 6,  floor: 0xF2EEF9 },
-  { id: 'sales',   name: 'Торговый зал', x0: 4,  y0: 6, x1: 20, y1: 15, floor: 0xF1EEF7 },
-  { id: 'service', name: 'Сервис',       x0: 20, y0: 0, x1: 24, y1: 15, floor: 0xEDEAF6 },
-  { id: 'stock',   name: 'Склад',        x0: 24, y0: 0, x1: 28, y1: 15, floor: 0xD9D2E6, dark: true },
+  // Полы разведены по оттенку, а не по яркости: комнаты различаются, но ни одна
+  // не спорит с мебелью, которая стоит на них.
+  { id: 'cash',    name: 'Касса',        x0: 0,  y0: 0, x1: 4,  y1: 4,  floor: 0xCFC3D8 },
+  { id: 'lockers', name: 'Постаматы',    x0: 0,  y0: 4, x1: 4,  y1: 15, floor: 0xC3BCD8 },
+  { id: 'pickup',  name: 'Пункт выдачи', x0: 4,  y0: 0, x1: 20, y1: 6,  floor: 0xCBC2DE },
+  { id: 'sales',   name: 'Торговый зал', x0: 4,  y0: 6, x1: 20, y1: 15, floor: 0xC8C4DC },
+  { id: 'service', name: 'Сервис',       x0: 20, y0: 0, x1: 24, y1: 15, floor: 0xC6C6D9 },
+  { id: 'stock',   name: 'Склад',        x0: 24, y0: 0, x1: 28, y1: 15, floor: 0xB4AAC6, dark: true },
 ];
 
 export const WALL_T = 0.3;                        // толщина внутренней стены

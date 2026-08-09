@@ -297,15 +297,9 @@ let padFxTick = 0;
 
 // Свет на складе зажигается, когда игрок туда заходит, и гаснет, когда уходит.
 // Из-за этого проверить сотрудника можно только ногами — как и просили.
-let lightK = 0;
 function tickStock(dt) {
   const r = nav.roomAt(actors.player.x, actors.player.y);
-  const want = r?.dark ? 1 : 0;
-  lightK += (want - lightK) * Math.min(1, dt * 4);
-  scene.setDark(lightK);
-  for (const a of actors.clerkList()) {
-    if (a.job === 'search') scene.setMood(a.view, null);
-  }
+  scene.litRoom(r?.id || '', dt);
 }
 
 /** Обмен с комнатой: свои координаты туда, чужие — в зал. */

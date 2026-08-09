@@ -138,7 +138,12 @@ export function movePlayer(dx, dy, dt) {
 export const customers = [];
 let spawnTimer = 0;
 
-const TINTS = [0xffffff, 0xffd9c2, 0xd6e8ff, 0xd9ffd6, 0xf0dcff, 0xfff2c2];
+// Восемь одинаковых фигурок читаются как узор, а не как люди. Разводим их по
+// цвету и росту: толпа сразу распадается на отдельных посетителей.
+const TINTS = [
+  0xFFFFFF, 0xFFC9A8, 0xA8CCFF, 0xA9E8B4, 0xE0B8FF, 0xFFE28A,
+  0xFF9F9F, 0x9FE8E8, 0xC9B08A, 0xB9C4FF,
+];
 
 export function spawnRate() {
   const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
@@ -239,7 +244,8 @@ function spawn(c) {
     id: Math.random().toString(36).slice(2),
     x: DOOR.x, y: HALL.h + 0.6,
     counter: c.id, state: 'walk', t: 0, serve: 0, serveSpeed: 1,
-    view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)]),
+    view: scene.makeCharView(TINTS[Math.floor(Math.random() * TINTS.length)],
+                             0.94 + Math.random() * 0.16),
     dir: 'nw', frame: 0, ft: 0, moving: true, ring: -1, waited: 0, incident: null, mood: null,
     path: null, pi: 0, out: false,
   };

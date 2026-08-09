@@ -192,13 +192,14 @@ export function tickWorldTags() {
     const s = scene.screenOf(cx, cy, near ? 1.35 : 0.4);
     t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
   }
-  // Две подсказки по ситуации: где обслуживать и куда нести выручку.
+  // Ровно одна подсказка за раз. Когда их было две, они спорили друг с другом
+  // и с указателем на соперника — глазу некуда было деться.
   const c1 = COUNTERS[0];
-  if (S.stats.served < 3 && S.counters[c1.id].open && !S.counters[c1.id].clerk) {
+  if (S.carry > 0.5) hint('drop', 'Сдать выручку', VAULT.drop.x, VAULT.drop.y, seen);
+  else if (S.stats.served < 3 && S.counters[c1.id].open && !S.counters[c1.id].clerk) {
     const sp = clerkSpot(c1);
     hint('serve', 'Встаньте сюда', sp.x, sp.y, seen);
   }
-  if (S.carry > 0.5) hint('drop', 'Сдать выручку', VAULT.drop.x, VAULT.drop.y, seen);
 
   for (const [id, el] of tags) {
     if (!seen.has(id)) { el.remove(); tags.delete(id); }

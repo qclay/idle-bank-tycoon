@@ -87,6 +87,12 @@ function isoCyl(g, cx, cy, r, z0, h, base) {
 let backdrop = null;
 function drawBackdropNow() { if (backdrop) drawBackdrop(backdrop); }
 
+/** Комната под точкой — камере нужно знать её границы. */
+function roomOf(x, y) {
+  for (const r of ROOMS) if (x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1) return r;
+  return null;
+}
+
 // ── Запуск ───────────────────────────────────────────────────────────────────
 
 export async function initScene(host, onProgress = () => {}) {
@@ -186,11 +192,14 @@ function drawBackdrop(g) {
 
 // ── Пол, стены, декор ────────────────────────────────────────────────────────
 
-const FLOOR_A = 0xf1eef7;      // светлая плитка
-const FLOOR_B = 0xe4dfef;
-const CARPET = 0x7C3AED;       // фирменная дорожка к стойкам
-const WALL = 0xfbfaff;
-const SHELF = 0xb9a9d6;        // стеллажи
+// Пол — самый тихий и самый тёмный слой сцены, мебель — самый светлый и
+// насыщенный. Раньше всё лежало в одном диапазоне светлоты, глазу было не за
+// что зацепиться, и картинка читалась как каша.
+const FLOOR_A = 0xC9C0DC;      // плитка: средняя по светлоте, приглушённая
+const FLOOR_B = 0xC1B7D6;
+const CARPET = 0x8B5CF6;       // фирменная дорожка к стойкам
+const WALL = 0xE8E2F2;         // дальние стены — фон, не герой
+const SHELF = 0xA895CC;        // стеллажи
 const PARCEL = [0xF4A261, 0xE9C46A, 0x8ECae6, 0xB5E48C, 0xF2A6C2, 0xC7B9F5];
 
 function buildGround() {
@@ -279,6 +288,52 @@ function buildGround() {
       const c = PARCEL[(i * 3 + 1) % PARCEL.length];
       isoBox(g, px0 + 0.1, py0 + 0.1, px0 + 0.8, py0 + 0.8, 0.12 + i * 0.3, 0.3, c);
     }
+  }
+
+  // Тени от перегородок и мебели на полу: без них изометрия читается как
+  // коллаж наклеек, а не как помещение.
+  const sh = new Graphics();
+  const shadow = (x0, y0, x1, y1, k = 0.5) => {
+    const o = k * 0.42;
+    isoRhomb(sh, x0 + 0.18, y0 + 0.18, x1 + 0.55, y1 + 0.55, 0.006, 0x2A1F3D, { alpha: 0.16 });
+  };
+  for (const w of WALLS) {
+    const t2 = WALL_T / 2;
+    if (w.x != null) shadow(w.x - t2, w.y0, w.x + t2, w.y1);
+    else shadow(w.x0, w.y - t2, w.x1, w.y + t2);
+  }
+  shadow(VAULT.x, VAULT.y, VAULT.x + VAULT.w, VAULT.y + VAULT.h);
+  for (const c of COUNTERS) shadow(c.x, c.y, c.x + 2, c.y + 0.62);
+  g.addChild(sh);
+
+  // Торговый зал не должен быть голой плиткой: витрины, зелень и корзины
+  // дают глазу опору и делают помещение обжитым.
+  // Кадка с шаровидным кустом: три круглых яруса читаются как зелень, а
+  // кубики из коробок — как коробки.
+  const plant = (x, y, k = 1) => {
+    isoCyl(g, x, y, 0.36 * k, 0, 0.4 * k, 0xC98F5A);
+    isoCyl(g, x, y, 0.37 * k, 0.4 * k, 0.06 * k, 0xA9743F);
+    isoCyl(g, x, y, 0.34 * k, 0.46 * k, 0.34 * k, 0x3F8F4C);
+    isoCyl(g, x, y, 0.29 * k, 0.78 * k, 0.3 * k, 0x4FA85C);
+    isoCyl(g, x, y, 0.2 * k, 1.06 * k, 0.24 * k, 0x63C46E);
+  };
+  const basket = (x, y) => {
+    for (let i = 0; i < 4; i++) {
+      isoBox(g, x, y, x + 0.5, y + 0.42, i * 0.13, 0.16, 0x8B5CF6, { ow: 1.6 });
+    }
+  };
+  // витрины с товаром вдоль левой стены торгового зала
+  rack(4.5, 6.8, 5.0, 11.4, true);
+  rack(4.5, 12.2, 5.0, 14.4, true);
+  // зелень по углам и у прохода
+  plant(9.4, 6.9); plant(19.2, 14.1); plant(5.6, 14.2, 0.85); plant(19.2, 6.9, 0.85);
+  // корзины у входа
+  basket(13.9, 13.6); basket(14.6, 13.6);
+  // низкая витрина-остров в центре зала
+  isoBox(g, 8.2, 10.2, 10.6, 11.2, 0, 0.62, 0xF3EEFB, { ow: 2, top: 0xFFFFFF });
+  for (let i = 0; i < 4; i++) {
+    const c2 = PARCEL[i % PARCEL.length];
+    isoBox(g, 8.4 + i * 0.55, 10.35, 8.84 + i * 0.55, 10.85, 0.62, 0.34, c2, { ow: 1.6 });
   }
 
   ground.addChild(g);
@@ -768,9 +823,12 @@ export function setCarryStack(view, ratio) {
 // конца должен быть за ней, у ближнего — перед ней. Поэтому каждую стену
 // режем на куски по тайлу и сортируем поштучно.
 
-const PART = 0xF7F4FD;          // цвет перегородки
-const PART_TOP = 0x7C3AED;      // фирменный кант поверху
-const PART_H = 1.55;            // высота: комнаты читаются, но зал не закрыт
+// Перегородки — это фон. Раньше они были самым ярким объектом кадра: длинные
+// белые панели с насыщенным фиолетовым кантом сверху и снизу. Их на экране
+// больше, чем всего остального, и внимание забирала пустая стена.
+const PART = 0xD5CCE6;          // чуть светлее пола, но тише мебели
+const PART_TOP = 0xB7A9D4;      // кант того же семейства, без крика
+const PART_H = 1.15;            // ниже: комнаты читаются, обзор не режется
 
 function buildWalls() {
   const t = WALL_T / 2;
@@ -786,9 +844,10 @@ function buildWalls() {
       const y0 = vertical ? a : w.y - t;
       const y1 = vertical ? b : w.y + t;
       isoBox(g, x0, y0, x1, y1, 0, PART_H, PART,
-             { top: 0xFFFFFF, right: shade(PART, -0.2), left: shade(PART, -0.06), sheen: false });
-      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, PART_H, 0.1, PART_TOP, { sheen: false });
-      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, 0, 0.09, PART_TOP, { sheen: false });
+             { top: shade(PART, 0.1), right: shade(PART, -0.18), left: shade(PART, -0.05),
+               ow: 1.4, sheen: false });
+      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, PART_H, 0.07, PART_TOP,
+             { ow: 1.4, sheen: false });
       const c = new Container();
       c.addChild(g);
       c.zIndex = depth(x1, y1, 0);
@@ -802,7 +861,7 @@ function buildWalls() {
       const g = new Graphics();
       const cx = vertical ? d.x : d.x + sgn * (d.w / 2 + 0.09);
       const cy = vertical ? d.y + sgn * (d.w / 2 + 0.09) : d.y;
-      isoBox(g, cx - 0.14, cy - 0.14, cx + 0.14, cy + 0.14, 0, PART_H + 0.18, PART_TOP, { sheen: false });
+      isoBox(g, cx - 0.13, cy - 0.13, cx + 0.13, cy + 0.13, 0, PART_H + 0.2, 0x7C3AED, { sheen: false });
       const c = new Container();
       c.addChild(g);
       c.zIndex = depth(cx + 0.14, cy + 0.14, 0);
@@ -815,28 +874,46 @@ function buildWalls() {
 // Свет на складе не горит: снаружи видно только силуэты. Зашёл — лампы
 // включились, и стало ясно, кто ищет товар, а кто листает ленту.
 
-let darkView = null;
+// Соседние помещения приглушаем: комната, где стоит игрок, светится, остальные
+// отступают в тень. Без этого глаз видит четыре комнаты сразу и не понимает,
+// на что смотреть. На складе вуаль гуще — там просто не горит свет.
+const veils = new Map();
+const VEIL_NEAR = 0.0;          // своя комната
+const VEIL_FAR = 0.34;          // соседняя
+const VEIL_DARK = 0.82;         // склад, пока в него не зашли
+
 export function buildDark() {
-  const r = ROOMS.find((x) => x.dark);
-  if (!r) return;
-  const g = new Graphics();
-  isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.02, 0x140F22, { alpha: 0.82 });
-  // мягкая кромка у проёма, чтобы темнота не обрубалась линейкой
-  isoRhomb(g, r.x0, r.y0, r.x0 + 0.9, r.y1, 0.021, 0x140F22, { alpha: 0.25 });
-  const c = new Container();
-  c.addChild(g);
-  c.zIndex = 1e6;                       // поверх пола и мебели, под интерфейсом
-  items.addChild(c);
-  darkView = c;
+  for (const r of ROOMS) {
+    const g = new Graphics();
+    isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.02, 0x140F22, { alpha: 1 });
+    const c = new Container();
+    c.addChild(g);
+    c.alpha = r.dark ? VEIL_DARK : VEIL_FAR;
+    c.zIndex = 1e6;                     // поверх пола и мебели, под интерфейсом
+    items.addChild(c);
+    veils.set(r.id, c);
+  }
 }
 
-/** k = 0 — темно, 1 — свет включён. Меняем плавно: резкий скачок режет глаз. */
-export function setDark(k) {
-  if (darkView) darkView.alpha = 1 - clamp(k, 0, 1);
+/** Где сейчас игрок: его комнату открываем, остальные притеняем. */
+export function litRoom(id, dt = 0.016) {
+  for (const r of ROOMS) {
+    const v = veils.get(r.id);
+    if (!v) continue;
+    const want = r.id === id ? VEIL_NEAR : (r.dark ? VEIL_DARK : VEIL_FAR);
+    v.alpha += (want - v.alpha) * Math.min(1, dt * 5);
+    if (Math.abs(want - v.alpha) < 0.004) v.alpha = want;
+  }
 }
+
+/** Насколько притенено помещение — этим пользуются тесты. */
+export function veilOf(id) { return veils.get(id)?.alpha ?? 0; }
 
 /** Насколько сейчас темно на складе — этим пользуются тесты. */
-export function darkAlpha() { return darkView ? darkView.alpha : 0; }
+export function darkAlpha() {
+  const r = ROOMS.find((x) => x.dark);
+  return r ? (veils.get(r.id)?.alpha ?? 0) : 0;
+}
 
 function isVerticalDoor(d) {
   const a = ROOMS.find((r) => r.id === d.a), b = ROOMS.find((r) => r.id === d.b);
@@ -844,14 +921,14 @@ function isVerticalDoor(d) {
 }
 
 /** Клиент или сотрудник: изометрический спрайт человека на 4 направления. */
-export function makeCharView(tint = 0) {
+export function makeCharView(tint = 0, size = 1) {
   const c = new Container();
   const shadow = new Graphics();
-  shadow.ellipse(0, 0, 14, 7).fill({ color: 0x000000, alpha: 0.2 });
+  shadow.ellipse(0, 0, 14 * size, 7 * size).fill({ color: 0x000000, alpha: 0.24 });
   c.addChild(shadow);
   const s = new Sprite(tex.se0);
   s.anchor.set(0.5, 1);
-  s.scale.set(0.3);
+  s.scale.set(0.3 * size);
   if (tint) s.tint = tint;
   c.addChild(s);
   const ring = new Graphics();
@@ -1057,25 +1134,37 @@ const insets = { top: 0, bottom: 0 };
 
 export function fitCamera(hudTop = 0, hudBottom = 0) {
   if (!app) return;
-  const b = bounds();
-  const h = Math.max(120, app.screen.height - hudTop - hudBottom);
-  const w = app.screen.width;
-  fitH = h;
-  // Изометрический зал всегда шире, чем выше (2:1), поэтому в портрет он целиком
-  // не влезает — камера ездит за игроком. Масштаб подбираем так, чтобы в кадре
-  // было ~7 тайлов по ширине, но зал не оказался мельче экрана по высоте.
-  const byWidth = w / (TW * 7);
-  const minByHeight = h / (b.bottom - b.top);
-  cam.scale = clamp(Math.max(byWidth, minByHeight * 0.92), 0.42, 1.3);
-  world.scale.set(cam.scale);
+  fitH = Math.max(120, app.screen.height - hudTop - hudBottom);
+  insets.top = hudTop; insets.bottom = hudBottom;
+}
+
+/** Масштаб под помещение, где стоит игрок. Подгоняем по глубине комнаты, а не
+ *  по ширине: в изометрии зал вдвое шире, чем выше, и попытка вместить его
+ *  целиком делает людей размером с горошину. По глубине комната видна вся —
+ *  этого хватает, чтобы понимать, где ты, — а вдоль камера едет за игроком.
+ *  Раньше масштаб был жёстким, и в кадр попадали обрубки сразу четырёх комнат. */
+function scaleForRoom(r, w, h) {
+  if (!r) return 0.75;
+  const corners = [px(r.x0, r.y0), px(r.x1, r.y0), px(r.x1, r.y1), px(r.x0, r.y1)];
+  const tall = Math.max(...corners.map((c) => c.y)) - Math.min(...corners.map((c) => c.y))
+    + TH * 1.2 + ZU * 2.0;                        // запас на высоту мебели и стен
+  return clamp(h / tall, 0.5, 1.1);
 }
 
 export function follow(x, y, hudTop = 0, hudBottom = 0) {
   if (!app) return;
   insets.top = hudTop; insets.bottom = hudBottom;
   if (Math.abs(fitH - (app.screen.height - hudTop - hudBottom)) > 2) fitCamera(hudTop, hudBottom);
-  const p = px(x, y, 0);
   const w = app.screen.width, h = app.screen.height;
+
+  // Камера показывает то помещение, где стоит игрок, целиком. При переходе
+  // масштаб переезжает плавно — резкий скачок читается как рывок.
+  const want = scaleForRoom(roomOf(x, y), w, Math.max(120, h - hudTop - hudBottom));
+  cam.scale += (want - cam.scale) * 0.06;
+  if (Math.abs(want - cam.scale) < 0.002) cam.scale = want;
+  world.scale.set(cam.scale);
+
+  const p = px(x, y, 0);
   const s = cam.scale;
   const b = bounds();
 

@@ -124,6 +124,52 @@ const overflow = await p.evaluate(() => {
 });
 ok('ничего не вылезает за края экрана', overflow.n === 0, overflow.bad.join(', '));
 
+// ── 6. Фокус: своя комната светится, соседние отступают ──────────────────────
+
+const focus = await p.evaluate(() => new Promise((res) => {
+  const { actors, scene, nav } = window.__game;
+  actors.player.x = 12; actors.player.y = 11;
+  setTimeout(() => {
+    const alphas = {};
+    for (const r of window.__balance.ROOMS) alphas[r.name] = +scene.veilOf(r.id).toFixed(2);
+    res({ комната: nav.roomAt(actors.player.x, actors.player.y)?.name, alphas });
+  }, 1500);
+}));
+ok('комната игрока не притенена', focus.alphas['Торговый зал'] < 0.05,
+   `вуаль ${focus.alphas['Торговый зал']}`);
+ok('соседние помещения уходят в тень', focus.alphas['Пункт выдачи'] > 0.2,
+   JSON.stringify(focus.alphas));
+ok('склад темнее всех', focus.alphas['Склад'] > focus.alphas['Пункт выдачи'],
+   `склад ${focus.alphas['Склад']}`);
+
+// ── 7. Камера показывает глубину комнаты целиком ─────────────────────────────
+
+const cam = await p.evaluate(() => {
+  const { scene } = window.__game;
+  const B = window.__balance;
+  const H = scene.viewH();
+  const r = B.ROOMS.find((x) => x.id === 'sales');
+  let top = 1e9, bot = -1e9;
+  for (let y = r.y0; y <= r.y1; y += 0.5) for (let x = r.x0; x <= r.x1; x += 0.5) {
+    const s = scene.screenOf(x, y, 0);
+    top = Math.min(top, s.y); bot = Math.max(bot, s.y);
+  }
+  return { масштаб: +scene.cam.scale.toFixed(2), глубинаНаЭкране: Math.round(bot - top), экран: Math.round(H) };
+});
+ok('вся глубина комнаты влезает в экран', cam.глубинаНаЭкране < cam.экран,
+   `${cam.глубинаНаЭкране}px при экране ${cam.экран}px`);
+ok('но люди не превращаются в горошины', cam.масштаб >= 0.55, `масштаб ${cam.масштаб}`);
+
+// ── 8. Подсказка в мире ровно одна ───────────────────────────────────────────
+
+const hints = await p.evaluate(() => new Promise((res) => {
+  const { S } = window.__game;
+  S.carry = 50; S.stats.served = 0; S.counters.c1.open = true; S.counters.c1.clerk = 0;
+  setTimeout(() => res([...document.querySelectorAll('.wtag--hint')]
+    .filter((e) => !e.classList.contains('is-off')).map((e) => e.textContent)), 600);
+}));
+ok('подсказка показывается одна за раз', hints.length === 1, hints.join(' | ') || 'ни одной');
+
 for (const c of checks) console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.info ? '  — ' + c.info : ''}`);
 const bad = checks.filter((c) => !c.pass).length;
 console.log(`\nпройдено ${checks.length - bad} из ${checks.length}`);
