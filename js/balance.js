@@ -53,12 +53,12 @@ export const DOORWAYS = [
 // Стойки расставлены по комнатам: три в пункте выдачи, три в торговом зале.
 // Центральный проход (x 11…13.4) от входа к проёму держим свободным.
 export const COUNTERS = [
-  { id: 'c1', name: 'Выдача заказов', x: 5,    y: 2,  room: 'pickup', cost: 0,      base: 12,    tone: 0x7C3AED },
-  { id: 'c2', name: 'Примерочная',    x: 9.4,  y: 2,  room: 'pickup', cost: 1200,   base: 44,    tone: 0x0EA5E9 },
-  { id: 'c3', name: 'Приём возвратов',x: 16.4, y: 2,  room: 'pickup', cost: 26000,  base: 165,   tone: 0x22C55E },
-  { id: 'c4', name: 'Крупногабарит',  x: 5,    y: 8,  room: 'sales',  cost: 620000, base: 640,   tone: 0xF59E0B },
-  { id: 'c5', name: 'Экспресс-выдача',x: 15.6, y: 8,  room: 'sales',  cost: 1.9e7,  base: 2600,  tone: 0xEC4899 },
-  { id: 'c6', name: 'Premium-зона',   x: 15.6, y: 12, room: 'sales',  cost: 7.2e8,  base: 10500, tone: 0x14B8A6 },
+  { id: 'c1', name: 'Выдача заказов', x: 5,    y: 2,  room: 'pickup', cost: 0,      base: 30,    tone: 0x7C3AED },
+  { id: 'c2', name: 'Примерочная',    x: 9.4,  y: 2,  room: 'pickup', cost: 1200,   base: 110,    tone: 0x0EA5E9 },
+  { id: 'c3', name: 'Приём возвратов',x: 16.4, y: 2,  room: 'pickup', cost: 26000,  base: 412,   tone: 0x22C55E },
+  { id: 'c4', name: 'Крупногабарит',  x: 5,    y: 8,  room: 'sales',  cost: 620000, base: 1600,   tone: 0xF59E0B },
+  { id: 'c5', name: 'Экспресс-выдача',x: 15.6, y: 8,  room: 'sales',  cost: 1.9e7,  base: 6500,  tone: 0xEC4899 },
+  { id: 'c6', name: 'Premium-зона',   x: 15.6, y: 12, room: 'sales',  cost: 7.2e8,  base: 26250, tone: 0x14B8A6 },
 ];
 
 // Постаматы: выдают заказы сами, выручка копится в ячейках — её тоже нужно забирать
@@ -91,7 +91,7 @@ export const ZONES = [
 export const UPGRADES = {
   // Пад стоит в зале, игрок встаёт на него и держит — деньги списываются
   bag:   { id: 'bag',   name: 'Тележка',  desc: 'Больше выручки за раз', x: 4.8,  y: 13.2,
-           cost: 260,  grow: 1.55, step: 6,    base: 12,  max: 60, ic: 'i-cart' },
+           cost: 260,  grow: 1.55, step: 15,   base: 30,  max: 60, ic: 'i-cart' },
   boots: { id: 'boots', name: 'Кроссовки',desc: 'Скорость ходьбы',       x: 7.0,  y: 13.2,
            cost: 420,  grow: 1.62, step: 0.26, base: 4.3, max: 30, ic: 'i-run' },
   vault: { id: 'vault', name: 'Касса',    desc: 'Множитель выручки',     x: 9.2,  y: 13.2,
@@ -103,10 +103,14 @@ export const COUNTER_UP = { costRatio: 0.8, grow: 1.23, payGrow: 1.125, speedGro
 
 // ─── Клиенты ─────────────────────────────────────────────────────────────────
 
+// Поток людей растёт медленно и упирается в потолок: рост бизнеса виден по
+// деньгам за клиента, а не по толпе. Толпа быстро утомляет и превращает игру
+// в суету.
 export const CUSTOMER = {
   spawnBase: 2.1,        // секунд между клиентами при одной стойке
-  spawnPerCounter: 0.62, // во столько раз чаще с каждой открытой стойкой
-  minSpawn: 0.45,
+  spawnPerCounter: 0.86, // во столько раз чаще с каждой открытой стойкой
+  minSpawn: 1.15,        // чаще этого людей в зал не пускаем
+  maxOnScreen: 16,       // столько людей одновременно в зале
   serveTime: 1.35,       // сколько секунд обслуживается один клиент
   patience: 46,          // через сколько секунд без обслуживания уходит
   maxQueue: 3,           // очередь к одной стойке
@@ -125,7 +129,7 @@ export const STAFF = {
   runner: {
     id: 'runner', name: 'Администратор', desc: 'Сам относит выручку в кассу',
     art: './assets/char/nw_0.png',
-    cost: 26000, grow: 4.1, bagBase: 30, bagStep: 14, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
+    cost: 26000, grow: 4.1, bagBase: 75, bagStep: 35, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
   },
 };
 

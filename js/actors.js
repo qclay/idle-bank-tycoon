@@ -7,6 +7,9 @@ import * as scene from './scene.js';
 import * as reviews from './reviews.js';
 import * as smm from './smm.js';
 import * as nav from './nav.js';
+// Кольцевой импорт с game.js намеренный: обращаемся только внутри функций,
+// а живые связи модулей это позволяют. Математика денег живёт там.
+import * as game from './game.js';
 import { REP, ERRAND, STOCK_SPOTS } from './balance.js';
 
 // ── Геометрия объектов ───────────────────────────────────────────────────────
@@ -81,7 +84,9 @@ export function playerSpeed() {
 
 export function bagCap() {
   const u = UPGRADES.bag;
-  let c = u.base + u.step * (S.ups.bag || 0);
+  // Вместимость считаем в «клиентах», а не в рублях: тогда сколько бы ни вырос
+  // чек, ходок до кассы остаётся примерно столько же, и темп игры не сходит с ума.
+  let c = (u.base + u.step * (S.ups.bag || 0)) * game.payScale();
   if (boostOn('sprint')) c *= 2;
   return c;
 }
@@ -163,7 +168,7 @@ export function tickCustomers(dt, onServed) {
   if (spawnTimer <= 0) {
     spawnTimer = spawnRate();
     const c = freeCounter();
-    if (c && customers.length < 26) spawn(c);
+    if (c && customers.length < CUSTOMER.maxOnScreen) spawn(c);
   }
 
   for (let i = customers.length - 1; i >= 0; i--) {
@@ -480,7 +485,7 @@ export function tickClerks(dt) {
 
 export function runnerBag() {
   const d = STAFF.runner;
-  return d.bagBase + d.bagStep * (S.runner - 1);
+  return (d.bagBase + d.bagStep * (S.runner - 1)) * game.payScale();
 }
 export function runnerSpeed() {
   const d = STAFF.runner;

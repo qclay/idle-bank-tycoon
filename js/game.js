@@ -57,6 +57,18 @@ export function counterUpCost(def) {
 }
 export function trayCap(def) { return counterPay(def) * 14; }
 
+/** Во сколько раз выросла экономика с самого начала. Сумка и тележка
+ *  администратора считаются от неё: иначе доход растёт в разы, а унести можно
+ *  всё те же копейки, и игра превращается в бесконечную беготню. */
+export function payScale() {
+  let best = COUNTERS[0].base;
+  for (const c of COUNTERS) {
+    if (!S.counters[c.id]?.open) continue;
+    best = Math.max(best, counterPay(c));
+  }
+  return Math.max(1, best / COUNTERS[0].base);
+}
+
 export function atmRate(def) {
   const st = S.atms[def.id];
   return def.rate * COUNTER_UP.payGrow ** (st.lvl - 1) * vaultMult() * moneyBoost();
