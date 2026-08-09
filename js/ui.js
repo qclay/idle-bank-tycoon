@@ -36,7 +36,6 @@ export function initUI() {
     if (b) window.__openTab(b.dataset.tab);
   });
   $('#goldPill').addEventListener('click', () => window.__openTab('shop'));
-  $('#gearBtn').addEventListener('click', () => window.__openTab('settings'));
   $('#repPill').addEventListener('click', () => window.__openTab('social'));
   $('#netPill').addEventListener('click', () => window.__openTab('network'));
 }
@@ -206,14 +205,8 @@ export function tickWorldTags() {
     const s = scene.screenOf(cx, cy, near ? 1.35 : 0.4);
     t.style.transform = `translate(${Math.round(s.x)}px, ${Math.round(s.y)}px) translate(-50%,-100%)`;
   }
-  // Ровно одна подсказка за раз. Когда их было две, они спорили друг с другом
-  // и с указателем на соперника — глазу некуда было деться.
-  const c1 = COUNTERS[0];
-  if (S.carry > 0.5) hint('drop', 'Сдать выручку', VAULT.drop.x, VAULT.drop.y, seen);
-  else if (S.stats.served < 3 && S.counters[c1.id].open && !S.counters[c1.id].clerk) {
-    const sp = clerkSpot(c1);
-    hint('serve', 'Встаньте сюда', sp.x, sp.y, seen);
-  }
+  // Подсказок в мире больше нет: куда идти, говорит нижняя строка цели. Две
+  // подсказки об одном и том же только спорили друг с другом.
 
   for (const [id, el] of tags) {
     if (!seen.has(id)) { el.remove(); tags.delete(id); }
@@ -246,10 +239,14 @@ export function clearTags() { for (const [, el] of tags) el.remove(); tags.clear
 
 let goalEl = null;
 let goalCalm = 0;
+let goalTab = null;
 function tickGoal() {
   if (!goalEl) {
     goalEl = document.getElementById('goal');
-    goalEl.addEventListener('click', () => haptic('light'));
+    goalEl.addEventListener('click', () => {
+      haptic('light');
+      if (goalTab) window.__openTab(goalTab);
+    });
   }
   const g = game.nextGoal();
   if (!g) {
@@ -265,9 +262,19 @@ function tickGoal() {
   }
   goalCalm = 0;
   goalEl.hidden = false;
-  goalEl.className = g.hot ? 'is-hot' : '';
+  goalEl.className = (g.hot ? 'is-hot' : '') + (g.tutor ? ' is-tutor' : '');
   const t2 = goalEl.querySelector('.goal__t');
   if (t2.textContent !== g.label) t2.textContent = g.label;
+  goalTab = g.tab || null;
+  // Шаг обучения может звать не в точку зала, а в раздел меню — тогда стрелки
+  // нет, а по самой подсказке открывается нужный экран.
+  if (g.x == null) {
+    goalEl.querySelector('.goal__d').textContent = 'нажмите';
+    goalEl.querySelector('.goal__arrow').style.opacity = '0';
+    goalEl.classList.add('is-here');
+    return;
+  }
+  goalEl.querySelector('.goal__arrow').style.opacity = '1';
   const dx = g.x - player.x, dy = g.y - player.y;
   const d = Math.hypot(dx, dy);
   goalEl.querySelector('.goal__d').textContent = d < 1.4 ? 'вы на месте' : `${Math.round(d)} шагов`;
@@ -416,6 +423,12 @@ export function tickFoeMarker() {
     foeEl.addEventListener('click', () => window.__openTab('tasks', 'district'));
     els.worldUI.appendChild(foeEl);
   }
+  // Пока гонка не началась, указатель на соперника только мешает: он висит
+  // посреди экрана с нулями и спорит с названием комнаты.
+  const d0 = S.district;
+  const race = d0 && (d0.my > 0 || d0.foe > 0);
+  foeEl.hidden = !race;
+  if (!race) return;
   const F = scene.FOE;
   const p = scene.screenOf((F.x0 + F.x1) / 2, F.door.y, 3.4);
   const W = scene.viewW(), H = scene.viewH();

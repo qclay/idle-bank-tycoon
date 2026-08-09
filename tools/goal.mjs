@@ -49,6 +49,7 @@ const goalNow = () => p.evaluate(() => new Promise((res) => setTimeout(() => {
 
 await setup(() => {
   const { S, actors } = window.__game;
+  S.tut = 99;                       // обучение проверяется отдельно, в ux.mjs
   S.counters.c1.open = true; S.counters.c1.clerk = 1; S.cash = 0; S.carry = 0;
   for (const c of Object.values(S.counters)) c.cash = 0;
   actors.player.x = 12; actors.player.y = 11;

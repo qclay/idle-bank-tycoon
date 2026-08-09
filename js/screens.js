@@ -687,8 +687,8 @@ function openSafe(s) {
 // ── МАГАЗИН ──────────────────────────────────────────────────────────────────
 
 export function shop() {
-  setNav('shop');
-  open({ title: 'Магазин', render: shopView });
+  setNav('more');
+  open({ title: 'Кристаллы', render: shopView });
 }
 
 function shopView() {
@@ -713,6 +713,45 @@ function shopView() {
   return wrap;
 }
 
+// ── ЕЩЁ ──────────────────────────────────────────────────────────────────────
+// Соцсеть, сеть магазинов, совместная игра, кристаллы и настройки жили за
+// четырьмя безымянными значками в шапке — их просто не находили. Теперь у них
+// есть подписанный вход с описанием, что внутри.
+
+const MORE = [
+  { tab: 'social',   ic: 'i-star',  tone: 'tile--gold', name: 'Соцсеть',
+    sub: 'Отзывы города, новости района и продвижение' },
+  { tab: 'network',  ic: 'i-up',    tone: 'tile--ok',   name: 'Сеть магазинов',
+    sub: 'Передать магазин и открыть новый в другом районе' },
+  { tab: 'coop',     ic: 'i-staff', tone: '',           name: 'Вместе',
+    sub: 'Позвать друга или зайти к нему по коду' },
+  { tab: 'shop',     ic: 'i-shop',  tone: 'tile--cyan', name: 'Кристаллы',
+    sub: 'Ускорения, наборы и подарки' },
+  { tab: 'settings', ic: 'i-gear',  tone: '',           name: 'Настройки',
+    sub: 'Плавность, эффекты, вибрация' },
+];
+
+export function more() {
+  setNav('more');
+  open({ title: 'Ещё', render: moreView });
+}
+
+function moreView() {
+  const wrap = document.createElement('div');
+  for (const m of MORE) {
+    const locked = m.tab === 'network' && !prestigeReady() && !(S.prestige?.points > 0);
+    const row = h(`<button class="row row--tap${locked ? ' is-locked' : ''}">
+      <span class="tile ${m.tone}">${ic(locked ? 'i-lock' : m.ic, 'ic')}</span>
+      <div class="row__name">${m.name}</div>
+      <div class="row__sub">${locked ? 'Откроется, когда магазин подрастёт' : m.sub}</div>
+      <span class="row__go">${ic('i-up', 'ic')}</span>
+    </button>`).firstElementChild;
+    row.addEventListener('click', () => { haptic('light'); window.__openTab(m.tab); });
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
 // ── СЕТЬ МАГАЗИНОВ ───────────────────────────────────────────────────────────
 // Клапан жанра: когда следующая покупка перестаёт окупаться, магазин передают
 // управляющему и открывают новый в соседнем районе. Показываем ровно то, что
@@ -720,6 +759,7 @@ function shopView() {
 // оборота осталось до удвоения — по этому правилу и решают, когда уходить.
 
 export function network() {
+  setNav('more');
   open({ title: 'Сеть магазинов', render: networkView });
 }
 
@@ -888,6 +928,7 @@ export function errand(a, onClose) {
 // в чат с ботом. Код работает всегда.
 
 export function together() {
+  setNav('more');
   open({ title: 'Вместе', render: coopView });
 }
 
@@ -954,6 +995,7 @@ function coopView() {
 // Сюда же стекаются тексты, написанные моделью по реальным событиям в зале.
 
 export function social(sub) {
+  setNav('more');
   const m = open({
     title: 'Соцсеть',
     tabs: [{ label: 'Лента', render: feedView }, { label: 'Продвижение', render: promoView },
@@ -1137,6 +1179,7 @@ const QUALITY = [
 ];
 
 export function settings() {
+  setNav('more');
   open({ title: 'Настройки', render: settingsView });
 }
 

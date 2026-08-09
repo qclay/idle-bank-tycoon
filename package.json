@@ -35,6 +35,7 @@
     "econ": "node tools/econ.mjs",
     "prestige": "node tools/prestige.mjs",
     "goal": "node tools/goal.mjs",
+    "ux": "node tools/ux.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

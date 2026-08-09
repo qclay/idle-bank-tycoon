@@ -164,11 +164,15 @@ ok('но люди не превращаются в горошины', cam.мас
 
 const hints = await p.evaluate(() => new Promise((res) => {
   const { S } = window.__game;
-  S.carry = 50; S.stats.served = 0; S.counters.c1.open = true; S.counters.c1.clerk = 0;
-  setTimeout(() => res([...document.querySelectorAll('.wtag--hint')]
-    .filter((e) => !e.classList.contains('is-off')).map((e) => e.textContent)), 600);
+  S.tut = 99; S.carry = 50; S.counters.c1.open = true; S.counters.c1.clerk = 0;
+  setTimeout(() => res({
+    вМире: document.querySelectorAll('.wtag--hint:not(.is-off)').length,
+    строка: document.querySelectorAll('#goal:not([hidden])').length,
+    текст: document.querySelector('.goal__t')?.textContent || '',
+  }), 600);
 }));
-ok('подсказка показывается одна за раз', hints.length === 1, hints.join(' | ') || 'ни одной');
+ok('указание, что делать, ровно одно и в одном месте',
+   hints.строка === 1 && hints.вМире === 0, `${hints.текст} (в зале ${hints.вМире})`);
 
 for (const c of checks) console.log(`${c.pass ? '✓' : '✗'} ${c.name}${c.info ? '  — ' + c.info : ''}`);
 const bad = checks.filter((c) => !c.pass).length;

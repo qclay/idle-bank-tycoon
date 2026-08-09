@@ -175,7 +175,7 @@ ok('идём вправо — герой смотрит вправо', face.righ
 ok('идём влево — герой смотрит влево', face.left > 0, `scaleX ${face.left.toFixed(3)}`);
 
 // 10. Окна
-for (const tab of ['tasks', 'staff', 'safes', 'shop']) {
+for (const tab of ['tasks', 'staff', 'safes', 'more']) {
   await p.click(`.nav-btn[data-tab="${tab}"]`);
   await p.waitForTimeout(400);
   const okWin = await p.$('.win.is-open');

@@ -45,6 +45,11 @@
     <circle cx="15.4" cy="9.4" r="1.5" fill="currentColor"/>
     <path d="M7.6 14c1 2 2.6 3 4.4 3s3.4-1 4.4-3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
   </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24">
+    <circle cx="5.5" cy="12" r="1.9" fill="currentColor"/>
+    <circle cx="12" cy="12" r="1.9" fill="currentColor"/>
+    <circle cx="18.5" cy="12" r="1.9" fill="currentColor"/>
+  </symbol>
   <symbol id="i-star" viewBox="0 0 24 24">
     <path d="M12 3.2l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.6 6.7 19.4l1.1-5.9L3.5 9.4l5.9-.8L12 3.2Z" fill="currentColor"/>
   </symbol>
@@ -189,9 +194,6 @@
           <b class="cap__v" id="gold">0</b>
           <i class="cap__add">+</i>
         </button>
-        <button class="cap cap--gear" id="gearBtn" aria-label="Настройки">
-          <span class="cap__ic"><svg><use href="#i-gear"/></svg></span>
-        </button>
       </div>
     </div>
 
@@ -235,11 +237,11 @@
   <div id="joy"><div id="joyBase"></div><div id="joyKnob"></div></div>
 
   <nav id="nav">
-    <button class="nav-btn is-on" data-tab="bank"><span class="nav-btn__ic"><svg><use href="#i-box"/></svg></span><b>Пункт</b></button>
+    <button class="nav-btn is-on" data-tab="bank"><span class="nav-btn__ic"><svg><use href="#i-box"/></svg></span><b>Зал</b></button>
+    <button class="nav-btn" data-tab="staff"><span class="nav-btn__ic"><svg><use href="#i-desk"/></svg></span><b>Бизнес</b><i class="badge" hidden></i></button>
     <button class="nav-btn" data-tab="tasks"><span class="nav-btn__ic"><svg><use href="#i-tasks"/></svg></span><b>Задания</b><i class="badge" hidden></i></button>
-    <button class="nav-btn" data-tab="staff"><span class="nav-btn__ic"><svg><use href="#i-staff"/></svg></span><b>Персонал</b><i class="badge" hidden></i></button>
     <button class="nav-btn" data-tab="safes"><span class="nav-btn__ic"><svg><use href="#i-gift"/></svg></span><b>Награды</b><i class="badge" hidden></i></button>
-    <button class="nav-btn" data-tab="shop"><span class="nav-btn__ic"><svg><use href="#i-shop"/></svg></span><b>Магазин</b></button>
+    <button class="nav-btn" data-tab="more"><span class="nav-btn__ic"><svg><use href="#i-more"/></svg></span><b>Ещё</b><i class="badge" hidden></i></button>
   </nav>
 
   <div id="winRoot"></div>

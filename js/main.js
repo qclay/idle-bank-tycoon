@@ -29,6 +29,11 @@ window.__openTab = (tab, sub) => {
     screens.together();
     return;
   }
+  if (tab === 'more') {
+    if (screens.isOpen()) screens.close(true);
+    screens.more();
+    return;
+  }
   if (tab === 'network') {
     if (screens.isOpen()) screens.close(true);
     screens.network();

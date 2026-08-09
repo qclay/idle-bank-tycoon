@@ -61,7 +61,7 @@ svg{width:100%;height:100%;display:block}
 
 /* капсула счётчика: тёмное стекло + цветной диск иконки */
 .cap{display:flex;align-items:center;gap:calc(7 * var(--du));
-  height:calc(38 * var(--du));padding:0 calc(14 * var(--du)) 0 calc(4 * var(--du));
+  height:calc(50 * var(--du));padding:0 calc(14 * var(--du)) 0 calc(4 * var(--du));
   border-radius:calc(19 * var(--du));background:var(--glass);
   backdrop-filter:blur(calc(10 * var(--du)));
   box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.13),
@@ -280,6 +280,7 @@ svg{width:100%;height:100%;display:block}
 
 #worldUI{position:absolute;inset:0;z-index:12;pointer-events:none;overflow:hidden}
 .wtag{position:absolute;transform:translate(-50%,-100%);text-align:center;white-space:nowrap;
+  pointer-events:none;
   will-change:transform;transition:opacity .2s}
 .wtag__sign{display:inline-flex;flex-direction:column;align-items:center;
   padding:calc(5 * var(--du)) calc(11 * var(--du));border-radius:calc(13 * var(--du));
@@ -301,6 +302,7 @@ svg{width:100%;height:100%;display:block}
   0 calc(3 * var(--du)) calc(8 * var(--du)) rgba(0,0,0,.34)}
 .wtag.is-far .wtag__bar,.wtag.is-far .wtag__t{display:none}
 .wtag.is-far .wtag__p{font-size:calc(11 * var(--du));margin-top:0}
+.wtag.is-far{min-height:calc(50 * var(--du));display:flex;align-items:center}
 .wtag.is-far .wtag__sign{padding:calc(3 * var(--du)) calc(9 * var(--du));border-radius:calc(11 * var(--du))}
 .wtag--hint .wtag__sign{background:linear-gradient(180deg,#8B5CF6,var(--v1));
   box-shadow:0 calc(3 * var(--du)) 0 var(--v2),0 calc(5 * var(--du)) calc(12 * var(--du)) rgba(0,0,0,.35);
@@ -314,8 +316,8 @@ svg{width:100%;height:100%;display:block}
 .foemark{position:absolute;left:0;top:0;pointer-events:auto;display:flex;flex-direction:column;
   align-items:center;gap:calc(3 * var(--du));opacity:.55;transition:opacity .2s}
 .foemark:active{opacity:1}
-.foemark__body{display:flex;flex-direction:column;align-items:center;
-  padding:calc(5 * var(--du)) calc(11 * var(--du));border-radius:calc(13 * var(--du));
+.foemark__body{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:calc(46 * var(--du));padding:calc(6 * var(--du)) calc(12 * var(--du));border-radius:calc(13 * var(--du));
   background:var(--glass);backdrop-filter:blur(calc(6 * var(--du)));
   box-shadow:inset 0 0 0 calc(1.2 * var(--du)) rgba(255,255,255,.16)}
 .foemark.is-lead .foemark__body{box-shadow:inset 0 0 0 calc(1.2 * var(--du)) rgba(255,255,255,.16)}
@@ -364,10 +366,10 @@ svg{width:100%;height:100%;display:block}
 .wtag.is-off{opacity:0;pointer-events:none}
 
 #goal{position:absolute;left:50%;transform:translateX(-50%);
-  bottom:calc(var(--sab) + 96 * var(--du));z-index:22;
+  bottom:calc(var(--sab) + 100 * var(--du));z-index:22;
   display:flex;align-items:center;gap:calc(8 * var(--du));
-  height:calc(40 * var(--du));padding:0 calc(16 * var(--du)) 0 calc(12 * var(--du));
-  border-radius:calc(20 * var(--du));background:var(--glass);
+  height:calc(52 * var(--du));padding:0 calc(18 * var(--du)) 0 calc(14 * var(--du));
+  border-radius:calc(26 * var(--du));background:var(--glass);
   box-shadow:inset 0 0 0 calc(1.4 * var(--du)) rgba(255,255,255,.16),
              0 calc(4 * var(--du)) calc(14 * var(--du)) rgba(23,16,41,.4)}
 #goal .goal__arrow{width:calc(20 * var(--du));height:calc(20 * var(--du));flex:none;
@@ -380,6 +382,10 @@ svg{width:100%;height:100%;display:block}
              0 calc(4 * var(--du)) calc(14 * var(--du)) rgba(23,16,41,.4)}
 #goal.is-hot .goal__arrow{background:#FCD34D}
 #goal.is-here .goal__arrow{opacity:.35}
+#goal.is-tutor{background:linear-gradient(135deg,#8B5CF6,#6D28D9);
+  box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(255,255,255,.3),
+             0 calc(5 * var(--du)) calc(18 * var(--du)) rgba(109,40,217,.5)}
+#goal.is-tutor .goal__arrow{background:#fff}
 #goal.is-calm{opacity:.6}
 #goal.is-calm .goal__arrow{display:none}
 #goal:active{transform:translateX(-50%) scale(.96)}
@@ -396,7 +402,7 @@ svg{width:100%;height:100%;display:block}
   text-shadow:0 calc(1 * var(--du)) calc(6 * var(--du)) rgba(23,16,41,.9)}
 
 .bub{position:absolute;left:0;top:0;pointer-events:auto;
-  width:calc(34 * var(--du));height:calc(34 * var(--du));border-radius:calc(12 * var(--du));
+  width:calc(50 * var(--du));height:calc(50 * var(--du));border-radius:calc(17 * var(--du));
   display:flex;align-items:center;justify-content:center;background:#fff;
   box-shadow:0 calc(3 * var(--du)) calc(9 * var(--du)) rgba(23,16,41,.35),
              inset 0 0 0 calc(2.4 * var(--du)) var(--bubc,#E24A6A);
@@ -404,7 +410,7 @@ svg{width:100%;height:100%;display:block}
 .bub::after{content:'';position:absolute;left:50%;bottom:calc(-6 * var(--du));
   width:calc(11 * var(--du));height:calc(8 * var(--du));transform:translateX(-50%);
   background:#fff;clip-path:polygon(0 0,100% 0,50% 100%)}
-.bub__f{width:calc(21 * var(--du));height:calc(21 * var(--du));color:var(--bubc,#E24A6A)}
+.bub__f{width:calc(29 * var(--du));height:calc(29 * var(--du));color:var(--bubc,#E24A6A)}
 .bub:active{transform-origin:bottom center}
 .bub--upset{--bubc:#E24A6A;animation:bubPulse 1.1s ease-in-out infinite}
 .bub--bad{--bubc:#E24A6A}
@@ -425,14 +431,16 @@ svg{width:100%;height:100%;display:block}
 
   box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(196,181,253,.9)}
 
-.cap--gear{width:calc(34 * var(--du));padding:0;justify-content:center}
+.cap--gear{width:calc(50 * var(--du));padding:0;justify-content:center}
 /* Полоса состояния: рейтинг, уровень и «сколько нас» одним объектом.
    Раньше это были три отдельные плашки, и шапка выглядела свалкой. */
 .strip{position:relative;width:calc(440 * var(--du));margin:calc(8 * var(--du)) auto 0;
   display:flex;align-items:stretch;gap:calc(6 * var(--du));
   padding:0 calc(12 * var(--du))}
+/* Палец не попадает в кнопку меньше 44 px. При нашем --du это ~50 единиц —
+   ниже опускаться нельзя, даже если визуально хочется компактнее. */
 .strip__b{display:flex;align-items:center;gap:calc(5 * var(--du));flex:0 0 auto;
-  height:calc(30 * var(--du));padding:0 calc(11 * var(--du));border-radius:calc(15 * var(--du));
+  height:calc(50 * var(--du));padding:0 calc(14 * var(--du));border-radius:calc(16 * var(--du));
   background:var(--glass);box-shadow:inset 0 0 0 calc(1.2 * var(--du)) rgba(255,255,255,.14)}
 .strip__b .ic{width:calc(15 * var(--du));height:calc(15 * var(--du))}
 .strip__b b{color:#fff;font-size:calc(13 * var(--du));font-weight:900}
@@ -446,7 +454,7 @@ svg{width:100%;height:100%;display:block}
 .strip__coop.is-live{box-shadow:inset 0 0 0 calc(1.6 * var(--du)) rgba(74,222,128,.85)}
 .strip__coop.is-away{background:rgba(124,58,237,.85)}
 .strip__lvl{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:calc(7 * var(--du));
-  height:calc(30 * var(--du));padding:0 calc(11 * var(--du));border-radius:calc(15 * var(--du));
+  height:calc(50 * var(--du));padding:0 calc(12 * var(--du));border-radius:calc(16 * var(--du));
   background:var(--glass);box-shadow:inset 0 0 0 calc(1.2 * var(--du)) rgba(255,255,255,.14)}
 
 /* Карточка объекта: слева крупная иллюстрация в его собственном цвете, справа
@@ -484,6 +492,13 @@ svg{width:100%;height:100%;display:block}
 .bcard__acts .btn--main{flex:1 1 auto}
 .bcard__acts .btn__t{font-size:calc(13.5 * var(--du))}
 .bcard__acts .btn__p{font-size:calc(13.5 * var(--du))}
+
+.row--tap{width:100%;text-align:left;position:relative}
+.row--tap:active{transform:scale(.985)}
+.row--tap.is-locked{opacity:.55}
+.row__go{position:absolute;right:calc(14 * var(--du));top:50%;
+  width:calc(16 * var(--du));height:calc(16 * var(--du));color:var(--tx2);
+  transform:translateY(-50%) rotate(90deg)}
 
 .streak{padding:calc(13 * var(--du)) calc(15 * var(--du));border-radius:calc(16 * var(--du));
   background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;margin-bottom:calc(10 * var(--du))}

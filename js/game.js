@@ -2,7 +2,7 @@
 
 import {
   COUNTERS, ATMS, ZONES, UPGRADES, COUNTER_UP, CUSTOMER, STAFF, VAULT, XP, xpForLevel,
-  OFFLINE, BOOSTS, SAFES, ACHIEVEMENTS, DAILY_POOL, DAILY_ALL, PAD_DWELL, PAD_STOP_SPEED,
+  OFFLINE, BOOSTS, SAFES, ACHIEVEMENTS, DAILY_POOL, DAILY_ALL, PAD_DWELL, PAD_STOP_SPEED, TUTOR,
   PRESTIGE,
 } from './balance.js';
 import { S, save, emit, streakBonus } from './state.js';
@@ -139,15 +139,23 @@ export function pads() {
     out.push({ id: 'buy_' + c.id, kind: 'counter', ref: c, cost: c.cost,
                x: c.x + 0.3, y: c.y + 0.9, w: 1.4, h: 1.4, title: c.name, color: 0x5fd35f });
   }
+  // Постаматы и зоны тоже предлагаем по одному. Раньше новичок видел в зале
+  // ценники на 650M и 950M — они ничего ему не говорили, только пугали.
   for (const a of ATMS) {
     if (S.atms[a.id].open) continue;
+    const prev = ATMS[ATMS.indexOf(a) - 1];
+    if (prev && !S.atms[prev.id].open) continue;
     out.push({ id: 'buy_' + a.id, kind: 'atm', ref: a, cost: a.cost,
                x: a.x - 0.05, y: a.y + 0.75, w: 1.3, h: 1.3, title: a.name, color: 0x5fd35f });
+    break;
   }
   for (const z of ZONES) {
     if (S.zones?.[z.id]?.open) continue;
+    const prev = ZONES[ZONES.indexOf(z) - 1];
+    if (prev && !S.zones?.[prev.id]?.open) continue;
     out.push({ id: 'buy_' + z.id, kind: 'zone', ref: z, cost: z.cost,
                x: z.x, y: z.y + 1.5, w: 1.5, h: 1.5, title: z.name, color: 0x5fd35f });
+    break;
   }
   for (const k of Object.keys(UPGRADES)) {
     const u = UPGRADES[k];
@@ -169,7 +177,48 @@ if (!S.padPaid) S.padPaid = {};
 
 const GOAL = { bagFull: 0.85, trayFull: 0.55 };
 
+/** Шаг обучения или null, когда всё пройдено. Двигаемся только вперёд и только
+ *  по факту сделанного — подсказка не исчезнет, пока игрок её не выполнил. */
+export function tutorGoal() {
+  const step = S.tut || 0;
+  if (step >= TUTOR.length) return null;
+  const c1 = COUNTERS[0];
+  const st = S.counters[c1.id];
+  const T = (i, x, y) => ({ kind: 'tutor', x, y, label: TUTOR[i].text, hot: true, tutor: true });
+
+  if (step === 0) {
+    if (S.stats.served >= 1) { S.tut = 1; save(); }
+    else { const sp = clerkSpot(c1); return T(0, sp.x, sp.y); }
+  }
+  if (S.tut === 1) {
+    if (S.carry > 0.5) { S.tut = 2; save(); }
+    else if (st.cash > 0.5) { const sp = pickSpot(c1); return T(1, sp.x, sp.y); }
+    else { const sp = clerkSpot(c1); return T(0, sp.x, sp.y); }
+  }
+  if (S.tut === 2) {
+    if (S.stats.deposits >= 1 || S.cash > 0.5) { S.tut = 3; save(); }
+    else return T(2, VAULT.drop.x, VAULT.drop.y);
+  }
+  if (S.tut === 3) {
+    const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
+    if (open >= 2) { S.tut = 4; save(); }
+    else {
+      const pad = pads().find((p) => p.kind === 'counter');
+      if (pad) return T(3, pad.x + pad.w / 2, pad.y + pad.h / 2);
+      S.tut = 4; save();
+    }
+  }
+  if (S.tut === 4) {
+    if (COUNTERS.some((c) => S.counters[c.id].clerk > 0)) { S.tut = 5; save(); return null; }
+    return { kind: 'tutor', x: null, y: null, label: TUTOR[4].text, hot: true, tutor: true,
+             tab: 'staff' };
+  }
+  return null;
+}
+
 export function nextGoal() {
+  const t = tutorGoal();
+  if (t) return t;
   // 1. Полная тележка — деньги в руках не работают
   const cap = bagCap();
   if (S.carry >= cap * GOAL.bagFull) {
