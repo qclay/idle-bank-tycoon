@@ -128,6 +128,47 @@ const furniture = await p.evaluate(() => {
 });
 ok('перед постаматами и зонами человек рисуется спереди', furniture.length === 0, furniture.join(', '));
 
+// ── Обстановка живёт в слое предметов, а не на полу ──────────────────────────
+// Стеллажи, кусты, скамьи и витрины раньше рисовались на полу: дальняя стена
+// накрывала их, а люди проходили сквозь, не заходя за них.
+
+const decor = await p.evaluate(() => {
+  const { scene } = window.__game;
+  const L = scene.layers();
+  const w = scene.world;
+  const count = (i) => {
+    let n = 0;
+    const walk = (c) => { n += (c.children || []).length; for (const k of c.children || []) walk(k); };
+    walk(w.children[i]);
+    return n;
+  };
+  // у каждой обстановки должна быть своя глубина — значит, она отдельный
+  // контейнер в слое предметов, а не одна общая графика на полу
+  const items = w.children[L.items];
+  const withDepth = items.children.filter((c) => c.zIndex > 0).length;
+  return { наПолу: count(L.ground), вПредметах: withDepth };
+});
+ok('обстановка лежит в слое предметов со своей глубиной',
+   decor.вПредметах > 30, `предметов с глубиной ${decor.вПредметах}`);
+
+const behind = await p.evaluate(() => new Promise((res) => {
+  const { actors, scene } = window.__game;
+  // человек за стеллажом должен рисоваться позади него
+  actors.player.x = 6.4; actors.player.y = 0.7;      // между стеной и стеллажом
+  setTimeout(() => {
+    const items = scene.world.children[scene.layers().items];
+    const near = items.children
+      .filter((c) => c !== actors.player.view && c.zIndex > 0)
+      .map((c) => c.zIndex)
+      .filter((z) => Math.abs(z - actors.player.view.zIndex) < 3000);
+    res({ игрок: actors.player.view.zIndex, соседи: near.length,
+          заНим: near.filter((z) => z > actors.player.view.zIndex).length });
+  }, 500);
+}));
+ok('у стеллажей есть соседи по глубине с обеих сторон — значит, сортировка живая',
+   behind.соседи > 0 && behind.заНим > 0,
+   `рядом ${behind.соседи}, из них перед игроком ${behind.заНим}`);
+
 // ── Живая сцена: герой у стойки не должен быть разрезан ──────────────────────
 
 const cut = await p.evaluate(() => new Promise((res) => {

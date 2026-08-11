@@ -73,7 +73,7 @@ export function isoRhomb(g, x0, y0, x1, y1, z, color, o = {}) {
 }
 
 /** Изометрический «цилиндр» — колонна, вазон, тумба. */
-function isoCyl(g, cx, cy, r, z0, h, base) {
+function isoCyl(g, cx, cy, r, z0, h, base, ow = 2) {
   const steps = 18;
   const ring = (z) => {
     const pts = [];
@@ -87,9 +87,9 @@ function isoCyl(g, cx, cy, r, z0, h, base) {
   // боковая поверхность
   const side = [...top, ...bot.slice().reverse()];
   poly(g, side, base);
-  outline(g, side, 2);
+  if (ow) outline(g, side, ow);
   poly(g, top, shade(base, 0.22));
-  outline(g, top, 2);
+  if (ow) outline(g, top, ow);
 }
 
 let backdrop = null;
@@ -301,46 +301,6 @@ function buildGround() {
   }
 
   // стеллажи с посылками вдоль дальних стен
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  const rack = (x0, y0, x1, y1, vertical) => {
-    isoBox(g, x0, y0, x1, y1, 0, 2.15, SHELF, { sheen: false });
-    for (let lvl = 0; lvl < 3; lvl++) {
-      const z = 0.5 + lvl * 0.62;
-      isoBox(g, x0 - 0.04, y0 - 0.04, x1 + 0.04, y1 + 0.04, z, 0.07, shade(SHELF, -0.3));
-      const n = vertical ? Math.round((y1 - y0) / 0.55) : Math.round((x1 - x0) / 0.55);
-      for (let i = 0; i < n; i++) {
-        if (rnd() < 0.22) continue;
-        const c = PARCEL[Math.floor(rnd() * PARCEL.length)];
-        const s2 = 0.3 + rnd() * 0.1;
-        const px0 = vertical ? x0 + 0.08 : x0 + 0.12 + i * 0.55;
-        const py0 = vertical ? y0 + 0.12 + i * 0.55 : y0 + 0.08;
-        isoBox(g, px0, py0, px0 + (vertical ? 0.34 : s2), py0 + (vertical ? s2 : 0.34), z + 0.07, 0.34 + rnd() * 0.14, c);
-      }
-    }
-  };
-  // Стеллажи ставим перед дальней стеной, а не вплотную к ней: иначе они
-  // оказываются за текстурной стеной и не видны. Заодно они разбивают
-  // сплошную зелёную плоскость, которая иначе занимает треть экрана.
-  rack(5.0, 0.55, 9.6, 1.0, false);
-  rack(14.4, 0.55, 19.2, 1.0, false);
-  rack(0.55, 6.4, 1.0, 10.4, true);
-
-  // Склад: длинные стеллажи в два ряда, между ними проход — есть где потеряться
-  // и есть что искать.
-  rack(24.5, 1.4, 25.0, 6.2, true);
-  rack(26.4, 1.4, 26.9, 6.2, true);
-  rack(24.5, 8.6, 25.0, 13.6, true);
-  rack(26.4, 8.6, 26.9, 13.6, true);
-  // паллеты с товаром у прохода
-  for (const [px0, py0] of [[25.3, 7.0], [26.1, 13.9]]) {
-    isoBox(g, px0, py0, px0 + 0.9, py0 + 0.9, 0, 0.12, 0x8b7355);
-    for (let i = 0; i < 3; i++) {
-      const c = PARCEL[(i * 3 + 1) % PARCEL.length];
-      isoBox(g, px0 + 0.1, py0 + 0.1, px0 + 0.8, py0 + 0.8, 0.12 + i * 0.3, 0.3, c);
-    }
-  }
-
   // Тени от перегородок и мебели на полу: без них изометрия читается как
   // коллаж наклеек, а не как помещение.
   const sh = new Graphics();
@@ -357,63 +317,79 @@ function buildGround() {
   for (const c of COUNTERS) shadow(c.x, c.y, c.x + 2, c.y + 0.62);
   g.addChild(sh);
 
-  // Торговый зал не должен быть голой плиткой: витрины, зелень и корзины
-  // дают глазу опору и делают помещение обжитым.
-  // Кадка с шаровидным кустом: три круглых яруса читаются как зелень, а
-  // кубики из коробок — как коробки.
-  const plant = (x, y, k = 1) => {
-    isoCyl(g, x, y, 0.36 * k, 0, 0.4 * k, 0xC98F5A);
-    isoCyl(g, x, y, 0.37 * k, 0.4 * k, 0.06 * k, 0xA9743F);
-    isoCyl(g, x, y, 0.34 * k, 0.46 * k, 0.34 * k, 0x3F8F4C);
-    isoCyl(g, x, y, 0.29 * k, 0.78 * k, 0.3 * k, 0x4FA85C);
-    isoCyl(g, x, y, 0.2 * k, 1.06 * k, 0.24 * k, 0x63C46E);
-  };
-  const basket = (x, y) => {
-    for (let i = 0; i < 4; i++) {
-      isoBox(g, x, y, x + 0.5, y + 0.42, i * 0.13, 0.16, 0x8B5CF6, { ow: 1.6 });
-    }
-  };
-  // витрины с товаром вдоль левой стены торгового зала
-  rack(4.5, 6.8, 5.0, 11.4, true);
-  rack(4.5, 12.2, 5.0, 14.4, true);
-  // зелень по углам и у прохода
-  plant(9.4, 6.9); plant(19.2, 14.1); plant(5.6, 14.2, 0.85); plant(19.2, 6.9, 0.85);
-  // корзины у входа
-  basket(13.9, 13.6); basket(14.6, 13.6);
-  // низкая витрина-остров в центре зала
-  isoBox(g, 8.2, 10.2, 10.6, 11.2, 0, 0.62, 0xF3EEFB, { ow: 2, top: 0xFFFFFF });
-  for (let i = 0; i < 4; i++) {
-    const c2 = PARCEL[i % PARCEL.length];
-    isoBox(g, 8.4 + i * 0.55, 10.35, 8.84 + i * 0.55, 10.85, 0.62, 0.34, c2, { ow: 1.6 });
-  }
-
   ground.addChild(g);
 
-  // паллеты с посылками и скамья ожидания — вместо фермерского декора
-  const dec = new Graphics();
-  const pallet = (x, y) => {
-    isoBox(dec, x, y, x + 1.1, y + 1.1, 0, 0.14, 0x8b7355);
+  // Обстановка зала: у каждого предмета своя глубина, поэтому люди заходят за
+  // него, а дальняя стена его не накрывает.
+  // Кадка с кустом. Ярусы зелени рисуем без обводки: контуры превращали куст
+  // в стопку колец.
+  const plant = (x, y, k = 1) => decor(x - 0.4 * k, y - 0.4 * k, x + 0.4 * k, y + 0.4 * k, (d) => {
+    isoCyl(d, x, y, 0.34 * k, 0, 0.38 * k, 0xC98F5A);
+    isoCyl(d, x, y, 0.36 * k, 0.38 * k, 0.07 * k, 0xA9743F);
+    isoCyl(d, x, y, 0.32 * k, 0.45 * k, 0.42 * k, 0x3F8F4C, 0);
+    isoCyl(d, x, y, 0.26 * k, 0.83 * k, 0.34 * k, 0x4FA85C, 0);
+    isoCyl(d, x, y, 0.17 * k, 1.13 * k, 0.22 * k, 0x63C46E, 0);
+  });
+  const basket = (x, y) => decor(x, y, x + 0.5, y + 0.42, (d) => {
+    for (let i = 0; i < 4; i++) isoBox(d, x, y, x + 0.5, y + 0.42, i * 0.13, 0.16, 0x8B5CF6, { ow: 1.6 });
+  });
+  // Стеллаж длиной в пять тайлов одной глубиной не сортируется: он накрывал
+  // собой всё, что стояло рядом. Режем его на куски по тайлу — каждый кусок
+  // сортируется сам за себя, как это уже сделано у стен.
+  const shelf = (x0, y0, x1, y1, vertical) => {
+    const from = vertical ? y0 : x0;
+    const to = vertical ? y1 : x1;
+    for (let a = from; a < to - 1e-6; a += 1) {
+      const b2 = Math.min(a + 1, to);
+      const sx0 = vertical ? x0 : a;
+      const sx1 = vertical ? x1 : b2;
+      const sy0 = vertical ? a : y0;
+      const sy1 = vertical ? b2 : y1;
+      decor(sx0, sy0, sx1, sy1, (d) => rackInto(d, sx0, sy0, sx1, sy1, vertical));
+    }
+  };
+  const pallet = (x, y) => decor(x, y, x + 1.1, y + 1.1, (d) => {
+    isoBox(d, x, y, x + 1.1, y + 1.1, 0, 0.14, 0x8b7355);
     let h2 = 0.14;
     for (let i = 0; i < 3; i++) {
       const w2 = 0.9 - i * 0.12;
       const off = (1.1 - w2) / 2;
       const cc = PARCEL[(i + Math.round(x + y)) % PARCEL.length];
-      isoBox(dec, x + off, y + off, x + off + w2, y + off + w2, h2, 0.38, cc);
+      isoBox(d, x + off, y + off, x + off + w2, y + off + w2, h2, 0.38, cc);
       h2 += 0.38;
     }
-  };
-  pallet(0.5, 10.9);
-  pallet(16.2, 0.6);
-  // скамьи для ожидающих: ножки, сиденье, спинка
-  const bench = (x, y) => {
-    isoBox(dec, x + 0.06, y + 0.08, x + 0.18, y + 0.2, 0, 0.34, 0x6D28D9);
-    isoBox(dec, x + 1.22, y + 0.08, x + 1.34, y + 0.2, 0, 0.34, 0x6D28D9);
-    isoBox(dec, x, y, x + 1.4, y + 0.46, 0.34, 0.12, 0xA78BFA);
-    isoBox(dec, x, y - 0.04, x + 1.4, y + 0.02, 0.46, 0.46, 0x8B5CF6);
-  };
-  bench(15.3, 6.5);
-  bench(15.3, 9.1);
-  ground.addChild(dec);
+  });
+  const bench = (x, y) => decor(x, y - 0.04, x + 1.4, y + 0.46, (d) => {
+    isoBox(d, x + 0.06, y + 0.08, x + 0.18, y + 0.2, 0, 0.34, 0x6D28D9);
+    isoBox(d, x + 1.22, y + 0.08, x + 1.34, y + 0.2, 0, 0.34, 0x6D28D9);
+    isoBox(d, x, y, x + 1.4, y + 0.46, 0.34, 0.12, 0xA78BFA);
+    isoBox(d, x, y - 0.04, x + 1.4, y + 0.02, 0.46, 0.46, 0x8B5CF6);
+  });
+
+  // стеллажи у дальних стен и вдоль торгового зала
+  shelf(5.0, 0.55, 9.6, 1.0, false);
+  shelf(14.4, 0.55, 19.2, 1.0, false);
+  shelf(0.55, 6.4, 1.0, 10.4, true);
+  shelf(4.5, 6.8, 5.0, 11.4, true);
+  shelf(4.5, 12.2, 5.0, 14.4, true);
+  // склад: два ряда с проходом между ними
+  shelf(24.5, 1.4, 25.0, 6.2, true);
+  shelf(26.4, 1.4, 26.9, 6.2, true);
+  shelf(24.5, 8.6, 25.0, 13.6, true);
+  shelf(26.4, 8.6, 26.9, 13.6, true);
+  // зелень, корзины, паллеты, скамьи
+  plant(9.4, 6.9); plant(19.2, 14.1); plant(5.6, 14.2, 0.85); plant(19.2, 6.9, 0.85);
+  basket(13.9, 13.6); basket(14.6, 13.6);
+  pallet(0.5, 10.9); pallet(25.3, 7.0); pallet(26.1, 13.9);
+  bench(15.3, 6.5); bench(15.3, 9.1);
+  // низкая витрина-остров в центре зала
+  decor(8.2, 10.2, 10.6, 11.2, (d) => {
+    isoBox(d, 8.2, 10.2, 10.6, 11.2, 0, 0.62, 0xF3EEFB, { ow: 2, top: 0xFFFFFF });
+    for (let i = 0; i < 4; i++) {
+      const c2 = PARCEL[i % PARCEL.length];
+      isoBox(d, 8.4 + i * 0.55, 10.35, 8.84 + i * 0.55, 10.85, 0.62, 0.34, c2, { ow: 1.6 });
+    }
+  });
 
   buildStreet();
 
@@ -925,11 +901,13 @@ function buildWalls() {
       const x1 = vertical ? w.x + t : b;
       const y0 = vertical ? a : w.y - t;
       const y1 = vertical ? b : w.y + t;
-      isoBox(g, x0, y0, x1, y1, 0, PART_H, PART,
+      // Куски рисуем без обводки: она превращала ровную перегородку в дольки.
+      // Стык между соседними кусками при этом не виден — цвета граней совпадают.
+      isoBox(g, x0 - 0.005, y0 - 0.005, x1 + 0.005, y1 + 0.005, 0, PART_H, PART,
              { top: shade(PART, 0.1), right: shade(PART, -0.18), left: shade(PART, -0.05),
-               ow: 1.4, sheen: false });
-      isoBox(g, x0 - 0.02, y0 - 0.02, x1 + 0.02, y1 + 0.02, PART_H, 0.07, PART_TOP,
-             { ow: 1.4, sheen: false });
+               ow: 0, sheen: false });
+      isoBox(g, x0 - 0.025, y0 - 0.025, x1 + 0.025, y1 + 0.025, PART_H, 0.07, PART_TOP,
+             { ow: 0, sheen: false });
       const c = new Container();
       c.addChild(g);
       c.zIndex = depth(x1, y1, 0);
@@ -1058,6 +1036,42 @@ function buildOuterWalls() {
 function isVerticalDoor(d) {
   const a = ROOMS.find((r) => r.id === d.a), b = ROOMS.find((r) => r.id === d.b);
   return Math.abs(a.x1 - b.x0) < 1e-6 || Math.abs(b.x1 - a.x0) < 1e-6;
+}
+
+/** Стеллаж с посылками. Рисует в переданную графику, чтобы им могли
+ *  пользоваться и склад, и торговый зал. */
+let rackSeed = 7;
+function rackInto(g, x0, y0, x1, y1, vertical) {
+  const rnd = () => ((rackSeed = (rackSeed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  isoBox(g, x0, y0, x1, y1, 0, 2.15, SHELF, { sheen: false });
+  for (let lvl = 0; lvl < 3; lvl++) {
+    const z = 0.5 + lvl * 0.62;
+    isoBox(g, x0 - 0.04, y0 - 0.04, x1 + 0.04, y1 + 0.04, z, 0.07, shade(SHELF, -0.3));
+    const n = vertical ? Math.round((y1 - y0) / 0.55) : Math.round((x1 - x0) / 0.55);
+    for (let i = 0; i < n; i++) {
+      if (rnd() < 0.22) continue;
+      const c = PARCEL[Math.floor(rnd() * PARCEL.length)];
+      const s2 = 0.3 + rnd() * 0.1;
+      const px0 = vertical ? x0 + 0.08 : x0 + 0.12 + i * 0.55;
+      const py0 = vertical ? y0 + 0.12 + i * 0.55 : y0 + 0.08;
+      isoBox(g, px0, py0, px0 + (vertical ? 0.34 : s2), py0 + (vertical ? s2 : 0.34),
+             z + 0.07, 0.34 + rnd() * 0.14, c);
+    }
+  }
+}
+
+/** Объёмный кусок обстановки: рисуется в слое предметов и сортируется по своей
+ *  глубине. Раньше весь декор жил в слое пола — из-за этого стеллажи уезжали
+ *  под дальнюю стену, а люди проходили сквозь скамейки и кусты, не заходя за
+ *  них. Плоское (ковры, разметка) по-прежнему рисуется на полу. */
+function decor(x0, y0, x1, y1, draw) {
+  const g = new Graphics();
+  draw(g);
+  const c = new Container();
+  c.addChild(g);
+  c.zIndex = depth(x1, y1);
+  items.addChild(c);
+  return c;
 }
 
 /** Клиент или сотрудник: изометрический спрайт человека на 4 направления. */
