@@ -92,6 +92,11 @@ function isoCyl(g, cx, cy, r, z0, h, base, ow = 2) {
   if (ow) outline(g, top, ow);
 }
 
+// Сколько теней легло на пол. Их считает проверка: под витринами тень должна
+// быть ровно одна, своя, а не вторая ещё и из общего прохода.
+let floorShadows = 0;
+export function floorShadowCount() { return floorShadows; }
+
 let backdrop = null;
 function drawBackdropNow() { if (backdrop) drawBackdrop(backdrop); }
 
@@ -303,10 +308,15 @@ function buildGround() {
   // стеллажи с посылками вдоль дальних стен
   // Тени от перегородок и мебели на полу: без них изометрия читается как
   // коллаж наклеек, а не как помещение.
+  // Тени на полу рисуем только от того, что стоит на месте всегда: стены и
+  // касса. У витрин тень своя, внутри самой витрины, — иначе под каждой лежало
+  // по две штуки, и вторая вылезала из-под стойки тёмным квадратом. Заодно она
+  // рисовалась и под закрытыми витринами, которых в зале ещё нет.
   const sh = new Graphics();
-  const shadow = (x0, y0, x1, y1, k = 0.5) => {
-    const o = k * 0.42;
-    isoRhomb(sh, x0 + 0.18, y0 + 0.18, x1 + 0.55, y1 + 0.55, 0.006, 0x2A1F3D, { alpha: 0.16 });
+  floorShadows = 0;
+  const shadow = (x0, y0, x1, y1) => {
+    floorShadows++;
+    isoRhomb(sh, x0 + 0.14, y0 + 0.14, x1 + 0.3, y1 + 0.3, 0.006, 0x2A1F3D, { alpha: 0.13 });
   };
   for (const w of WALLS) {
     const t2 = WALL_T / 2;
@@ -314,7 +324,6 @@ function buildGround() {
     else shadow(w.x0, w.y - t2, w.x1, w.y + t2);
   }
   shadow(VAULT.x, VAULT.y, VAULT.x + VAULT.w, VAULT.y + VAULT.h);
-  for (const c of COUNTERS) shadow(c.x, c.y, c.x + 2, c.y + 0.62);
   g.addChild(sh);
 
   ground.addChild(g);
@@ -519,9 +528,12 @@ export function buildCounter(def, opened) {
     sp.anchor.set(0.5, 1);
     sp.x = (px(x, y + 1).x + px(x + COUNTER_TILES, y).x) / 2;
     sp.y = px(x + COUNTER_TILES, y + 1, 0).y;
-    // тень под стойкой, иначе она висит над полом
+    // Тень строго по следу стойки и чуть со сдвигом: раньше она была на треть
+    // тайла шире с каждой стороны и читалась как тёмный квадрат под кассой.
     const sh = new Graphics();
-    isoRhomb(sh, x - 0.1, y - 0.1, x + COUNTER_TILES + 0.35, y + 1.05, 0.004, 0x2A1F3D, { alpha: 0.18 });
+    sh.label = 'shadow';                 // по метке её находит проверка теней
+    isoRhomb(sh, x + 0.1, y + 0.12, x + COUNTER_TILES + 0.12, y + 0.74, 0.004,
+             0x2A1F3D, { alpha: 0.14 });
     c.addChild(sh, sp);
     // Глубина — по середине переднего края. Резать стойку на тайлы было хуже:
     // формально точнее, но человек, стоящий по центру перед ней, попадал за её
