@@ -17,8 +17,13 @@ const OUT = 'assets/iso';
 //  tiles — длина по своей оси в тайлах (её задал художник пропорцией картинки)
 //  anchor — опорная точка в долях картинки: чем сажаем на тайл
 const PLAN = [
-  { src: 'floor.PNG',         out: 'floor.png',      w: 1024, tiles: 8,
-    anchor: [0.5, 0], note: 'ромб 8×8, сажается верхней вершиной в угол участка' },
+  // Из плиты 8×8 вырезаем чистый ромб 4×4 клетки из середины: у исходника по
+  // краю идёт тёмная обводка, и при укладке встык она давала шов через каждые
+  // восемь тайлов — пол выглядел сшитым из кусков. Четыре клетки кладём на два
+  // тайла, поэтому рисунок вдвое мельче: клетка примерно по человеку, а не
+  // вдвое шире него.
+  { src: 'floor.PNG',         out: 'floor.png',      w: 512,  tiles: 2, cells: 4,
+    anchor: [0.5, 0], note: 'ромб 4×4 клетки на два тайла, режется из середины плиты' },
   { src: 'wall front.PNG',    out: 'wall-front.png', w: 1024, tiles: 8,
     anchor: [0, 0], note: 'панель вдоль оси x, левый верхний угол — начало стены' },
   { src: 'wall side.PNG',     out: 'wall-side.png',  w: 1024, tiles: 8,
@@ -39,7 +44,37 @@ for (const p of PLAN) {
   // Кроме обрезки и сжатия снимаем опорные точки: где у стены низ ближнего
   // столбца и где у пола верхняя вершина. Ставить картинки по этим числам
   // надёжнее, чем подбирать смещения на глаз.
-  const py = `
+  const py = p.cells ? `
+from PIL import Image, ImageDraw
+im = Image.open(${JSON.stringify(from)}).convert('RGBA')
+bb = im.split()[3].getbbox()
+im = im.crop(bb)
+W, H = im.size
+# исходник — ромб из 8×8 клеток; шаг одной клетки по обеим диагоналям
+n = 8
+cx, cy = W / 2, H / 2
+ax, ay = (W / 2) / n, (H / 2) / n          # вектор одной клетки вправо-вниз
+bx, by = -(W / 2) / n, (H / 2) / n         # и влево-вниз
+half = ${p.cells} / 2
+pts = [
+    (cx - half * ax - half * bx, cy - half * ay - half * by),
+    (cx + half * ax - half * bx, cy + half * ay - half * by),
+    (cx + half * ax + half * bx, cy + half * ay + half * by),
+    (cx - half * ax + half * bx, cy - half * ay + half * by),
+]
+mask = Image.new('L', (W, H), 0)
+ImageDraw.Draw(mask).polygon(pts, fill=255)
+cut = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+cut.paste(im, (0, 0), mask)
+cut = cut.crop(cut.split()[3].getbbox())
+w, h = cut.size
+k = ${p.w} / w
+cut = cut.resize((${p.w}, max(1, round(h * k))), Image.LANCZOS)
+cut.save(${JSON.stringify(to)}, optimize=True)
+a = cut.split()[3]
+W2, H2 = cut.size
+print(W2, H2, w, h, 0.5, 0.5, 0.5, 0.0)
+` : `
 from PIL import Image
 im = Image.open(${JSON.stringify(from)}).convert('RGBA')
 bb = im.split()[3].getbbox()

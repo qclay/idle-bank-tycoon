@@ -220,7 +220,7 @@ const PARCEL = [0xF4A261, 0xE9C46A, 0x8ECae6, 0xB5E48C, 0xF2A6C2, 0xC7B9F5];
  *  по его границам. Рисованную клетку оставляем запасным вариантом — если
  *  текстура не загрузилась, зал не должен исчезнуть. */
 function buildFloor() {
-  const TILE = 8;
+  const TILE = ISO.floor?.tiles || 8;          // сколько тайлов покрывает кусок
   const box = new Container();
   const src = tex.isoFloor;
   // По ширине и по высоте масштабируем отдельно: у картинки пропорция 1.977
@@ -502,11 +502,12 @@ export function buildVault() {
   const g = new Graphics();
   const { x, y, w, h } = VAULT;
   // тумба кассы
-  isoBox(g, x, y, x + w, y + h, 0, 0.95, 0x7C3AED);
-  isoBox(g, x - 0.07, y - 0.07, x + w + 0.07, y + h + 0.07, 0.95, 0.12, 0xF3F0FA);
+  isoBox(g, x, y, x + w, y + h, 0, 0.9, 0x7C3AED);
+  isoBox(g, x - 0.07, y - 0.07, x + w + 0.07, y + h + 0.07, 0.9, 0.12, 0xF3F0FA);
   // задняя стенка с логотипом-полосой
-  isoBox(g, x, y - 0.02, x + w, y + 0.02, 1.07, 1.5, 0xEDE9FE, { sheen: false });
-  isoBox(g, x + 0.1, y - 0.04, x + w - 0.1, y - 0.01, 1.9, 0.42, 0x7C3AED);
+  // Спинка кассы была выше человека вдвое и забирала весь угол — опускаем.
+  isoBox(g, x, y - 0.02, x + w, y + 0.02, 1.02, 0.86, 0xEDE9FE, { sheen: false });
+  isoBox(g, x + 0.1, y - 0.04, x + w - 0.1, y - 0.01, 1.7, 0.26, 0x7C3AED);
   // монитор и терминал на столешнице
   isoBox(g, x + 0.25, y + 0.55, x + 0.95, y + 0.62, 1.07, 0.5, 0x2A2140);
   isoBox(g, x + 1.5, y + 0.6, x + 1.9, y + 0.95, 1.07, 0.22, 0x4C1D95);
@@ -584,18 +585,19 @@ export function buildAtm(def, opened) {
   const g = new Graphics();
   const x = def.x, y = def.y;
   if (opened) {
-    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 2.05, def.tone);
+    // Постамат чуть выше человека, а не вдвое: 1.32 против прежних 2.05.
+    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 1.32, def.tone);
     // сетка ячеек на фронтальной грани
     for (let r = 0; r < 4; r++) {
       for (let cc = 0; cc < 2; cc++) {
-        const zz = 0.16 + r * 0.46;
+        const zz = 0.1 + r * 0.3;
         const xx = x + 0.06 + cc * 0.36;
-        isoBox(g, xx, y + 0.66, xx + 0.3, y + 0.69, zz, 0.36, shade(def.tone, 0.3), { ow: 1.2 });
+        isoBox(g, xx, y + 0.66, xx + 0.3, y + 0.69, zz, 0.3, shade(def.tone, 0.3), { ow: 1.2 });
       }
     }
     // экран сверху
-    isoBox(g, x + 0.12, y + 0.66, x + 0.68, y + 0.7, 1.66, 0.3, 0x2A2140, { ow: 1.2 });
-    isoBox(g, x + 0.16, y + 0.66, x + 0.64, y + 0.69, 1.7, 0.22, 0x67E8F9, { ow: 1 });
+    isoBox(g, x + 0.12, y + 0.66, x + 0.68, y + 0.7, 1.02, 0.22, 0x2A2140, { ow: 1.2 });
+    isoBox(g, x + 0.16, y + 0.66, x + 0.64, y + 0.69, 1.05, 0.15, 0x67E8F9, { ow: 1 });
   } else {
     isoBox(g, x, y, x + 0.8, y + 0.66, 0, 2.05, def.tone, { ow: 0, sheen: false });
     c.__ghost = true;
@@ -853,7 +855,10 @@ export function makePlayerView() {
     try {
       body = Spine.from({ skeleton: 'duck-skel', atlas: 'duck-atlas' });
       const b = body.getBounds();
-      const want = 78;                        // высота героя на экране
+      // Рост героя задаём от клиента, а не от балды: клиент на экране ~69 px,
+      // и утка не должна быть выше человека на треть — иначе зал выглядит
+      // разномасштабным.
+      const want = 66;
       const k = b.height > 0 ? want / b.height : 0.3;
       body.scale.set(k);
       if (body.skeleton.data.findAnimation('Idle')) body.state.setAnimation(0, 'Idle', true);

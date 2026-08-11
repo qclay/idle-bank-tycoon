@@ -83,6 +83,52 @@ ok('боковая стена собрана по тайлам', world.стен�
    `${world.стенаБок} полос при глубине ${world.глубинаЗала}`);
 ok('открытые стойки нарисованы текстурой', world.стойки === 2, `${world.стойки} стойки`);
 
+// ── Иерархия размеров ────────────────────────────────────────────────────────
+// Всё в зале меряется человеком. Если мебель начинает возвышаться над людьми
+// вдвое, картинка разваливается: непонятно, что тут главное и какого масштаба
+// вообще мир.
+
+await p.evaluate(() => {
+  const { S, actors } = window.__game;
+  for (const a of Object.values(S.atms)) a.open = true;
+  for (const z of Object.values(S.zones)) z.open = true;
+  actors.refreshSolids(); window.__rebuild();
+});
+await p.waitForTimeout(800);
+
+const sizes = await p.evaluate(() => {
+  const { scene, actors } = window.__game;
+  const B = window.__balance;
+  const k = scene.cam.scale;
+  // высота над полом: от опорной точки объекта до верха его картинки
+  const up = (view, x, y) => {
+    if (!view) return 0;
+    const b = view.getBounds();
+    const base = scene.screenOf(x, y, 0);
+    return Math.round((base.y - b.top) / k);
+  };
+  const kk = actors.customers[0];
+  return {
+    клиент: kk ? up(kk.view, kk.x, kk.y) : 0,
+    игрок: up(actors.player.view, actors.player.x, actors.player.y),
+    стойка: up(window.__views.counters.get('c1'), B.COUNTERS[0].x + 2, B.COUNTERS[0].y + 0.62),
+    постамат: up(window.__views.atms.get('a1'), B.ATMS[0].x + 0.8, B.ATMS[0].y + 0.66),
+    касса: 0,
+  };
+});
+const rel = (v) => (v / sizes.клиент).toFixed(2);
+console.log('высота над полом:', JSON.stringify(sizes), '— клиент принят за единицу');
+ok('герой не возвышается над людьми', sizes.игрок <= sizes.клиент * 1.35,
+   `герой ×${rel(sizes.игрок)} от человека`);
+// У стойки есть стеклянный экран, он законно выше столешницы — но выше
+// человека она подниматься не должна больше чем на треть.
+ok('стойка не возвышается над людьми',
+   sizes.стойка > 0 && sizes.стойка < sizes.клиент * 1.35,
+   `стойка ×${rel(sizes.стойка)}`);
+ok('постамат чуть выше человека, а не вдвое',
+   sizes.постамат > sizes.клиент * 0.9 && sizes.постамат < sizes.клиент * 1.45,
+   `постамат ×${rel(sizes.постамат)}`);
+
 await p.screenshot({ path: `${OUT}/tex.png` });
 
 // Текстур нет — игра всё равно должна собраться и работать
