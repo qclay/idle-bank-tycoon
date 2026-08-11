@@ -36,6 +36,8 @@
     "prestige": "node tools/prestige.mjs",
     "goal": "node tools/goal.mjs",
     "ux": "node tools/ux.mjs",
+    "tex": "node tools/tex.mjs",
+    "textures": "node tools/textures.mjs",
     "server": "cd server && npx wrangler deploy"
   }
 }

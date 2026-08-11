@@ -214,6 +214,7 @@ export function applyQuality() {
   }
 }
 window.__applyQuality = applyQuality;
+window.__rebuild = () => { rebuildObjects(); actors.refreshSolids(); };
 
 // ── Постройка зала ───────────────────────────────────────────────────────────
 

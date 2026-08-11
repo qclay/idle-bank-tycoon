@@ -5,11 +5,12 @@
 // spine-pixi должен импортироваться ДО создания рендерера, иначе его render-pipe
 // не регистрируется и Spine на сцене падает с validateRenderable.
 import { Spine } from '@esotericsoftware/spine-pixi-v8';
-import { Application, Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Application, Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 
 import { TW, TH, ZU, px, depth, shade, clamp } from './core.js';
 import * as fx from './fx.js';
 import { HALL, VAULT, COUNTERS, ATMS, ZONES, STREET, DOOR, DISTRICT, ROOMS, WALLS, WALL_T, DOORWAYS } from './balance.js';
+import { ISO } from './iso-meta.js';
 
 export const INK = 0x3f2b18;
 
@@ -151,6 +152,11 @@ async function loadTextures(onProgress) {
     coinS: './assets/ui/hud_coin.png',
     star: './assets/ui/hud_star.png',
     plant: './assets/nature/bush.png',
+    // изометрические текстуры от художника; метрика — в assets/iso/meta.json
+    isoFloor: './assets/iso/floor.png',
+    isoWallF: './assets/iso/wall-front.png',
+    isoWallS: './assets/iso/wall-side.png',
+    isoCounter: './assets/iso/counter.png',
   };
   for (const d of ['se', 'sw', 'ne', 'nw']) {
     for (let i = 0; i < 4; i++) list[`${d}${i}`] = `./assets/char/${d}_${i}.png`;
@@ -202,19 +208,55 @@ const WALL = 0xE8E2F2;         // дальние стены — фон, не г�
 const SHELF = 0xA895CC;        // стеллажи
 const PARCEL = [0xF4A261, 0xE9C46A, 0x8ECae6, 0xB5E48C, 0xF2A6C2, 0xC7B9F5];
 
+/** Пол из текстуры: плита 8×8 тайлов, разложенная по всему залу и обрезанная
+ *  по его границам. Рисованную клетку оставляем запасным вариантом — если
+ *  текстура не загрузилась, зал не должен исчезнуть. */
+function buildFloor() {
+  const TILE = 8;
+  const box = new Container();
+  const src = tex.isoFloor;
+  // По ширине и по высоте масштабируем отдельно: у картинки пропорция 1.977
+  // вместо ровно 2, и при едином масштабе плиты расходились бы с сеткой на
+  // несколько пикселей к дальнему краю.
+  const kx = (TILE * TW) / src.width;
+  const ky = (TILE * TH) / src.height;
+  for (let y = 0; y < HALL.h; y += TILE) {
+    for (let x = 0; x < HALL.w; x += TILE) {
+      const sp = new Sprite(src);
+      sp.anchor.set(0.5, 0);                  // верхняя вершина ромба
+      sp.scale.set(kx, ky);
+      const p = px(x, y, 0);
+      sp.x = p.x; sp.y = p.y;
+      box.addChild(sp);
+    }
+  }
+  // обрезаем по контуру зала: плиты кладём с запасом, наружу торчать нечему
+  const m = new Graphics();
+  isoRhomb(m, 0, 0, HALL.w, HALL.h, 0, 0xffffff);
+  box.addChild(m);
+  box.mask = m;
+  ground.addChild(box);
+  return box;
+}
+
 function buildGround() {
   const g = new Graphics();
 
-  // Плитка своя в каждом помещении: по полу сразу видно, где кончается одна
-  // комната и начинается другая.
-  for (const r of ROOMS) {
-    for (let y = Math.floor(r.y0); y < r.y1; y++) {
-      for (let x = Math.floor(r.x0); x < r.x1; x++) {
-        const c = (x + y) % 2 ? r.floor : shade(r.floor, -0.045);
-        isoRhomb(g, x, y, x + 1, y + 1, 0, c);
+  if (tex.isoFloor && tex.isoFloor !== Texture.EMPTY) buildFloor();
+  else {
+    for (const r of ROOMS) {
+      for (let y = Math.floor(r.y0); y < r.y1; y++) {
+        for (let x = Math.floor(r.x0); x < r.x1; x++) {
+          const c = (x + y) % 2 ? r.floor : shade(r.floor, -0.045);
+          isoRhomb(g, x, y, x + 1, y + 1, 0, c);
+        }
       }
     }
-    // тонкий кант по границе помещения
+  }
+  // Оттенок помещения поверх текстуры: комнаты должны различаться, но плитка
+  // остаётся общей — так пол выглядит цельным, а не сшитым из кусков.
+  for (const r of ROOMS) {
+    isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.0005, r.floor, { alpha: 0.3 });
     isoRhomb(g, r.x0, r.y0, r.x1, r.y1, 0.001, 0, { alpha: 0, ow: 1.6, oc: 0x8c7fb0, oa: 0.3 });
   }
 
@@ -234,22 +276,20 @@ function buildGround() {
   // контур пола
   isoRhomb(g, 0, 0, HALL.w, HALL.h, 0.004, 0x000000, { alpha: 0, ow: 2.5, oc: 0x6b5a44, oa: 0.35 });
 
-  // задние стены: по y = 0 и по x = 0
-  isoBox(g, 0, -0.34, HALL.w, 0, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
-  isoBox(g, -0.34, 0, 0, HALL.h, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
-  // парапет по верху — силуэт здания
-  isoBox(g, -0.34, -0.34, HALL.w, 0, 2.6, 0.3, 0x7C3AED, { sheen: false });
-  isoBox(g, -0.34, 0, 0, HALL.h, 2.6, 0.3, 0x7C3AED, { sheen: false });
-  // плинтус
-  isoBox(g, 0, -0.34, HALL.w, 0, 0, 0.14, 0x7C3AED);
-  isoBox(g, -0.34, 0, 0, HALL.h, 0, 0.14, 0x7C3AED);
-
-  // окна на дальней стене
-  for (let x = 3.4; x < HALL.w - 1.5; x += 3.4) {
-    isoBox(g, x, -0.36, x + 1.7, -0.32, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
-  }
-  for (let y = 3.4; y < HALL.h - 1.5; y += 3.4) {
-    isoBox(g, -0.36, y, -0.32, y + 1.7, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
+  // Задние стены: если текстуры есть — кладём их, иначе рисуем как раньше.
+  if (!buildOuterWalls()) {
+    isoBox(g, 0, -0.34, HALL.w, 0, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
+    isoBox(g, -0.34, 0, 0, HALL.h, 0, 2.6, WALL, { top: 0xE7E1F5, right: 0xCFC7E4, left: shade(WALL, -0.04), sheen: false });
+    isoBox(g, -0.34, -0.34, HALL.w, 0, 2.6, 0.3, 0x7C3AED, { sheen: false });
+    isoBox(g, -0.34, 0, 0, HALL.h, 2.6, 0.3, 0x7C3AED, { sheen: false });
+    isoBox(g, 0, -0.34, HALL.w, 0, 0, 0.14, 0x7C3AED);
+    isoBox(g, -0.34, 0, 0, HALL.h, 0, 0.14, 0x7C3AED);
+    for (let x = 3.4; x < HALL.w - 1.5; x += 3.4) {
+      isoBox(g, x, -0.36, x + 1.7, -0.32, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
+    }
+    for (let y = 3.4; y < HALL.h - 1.5; y += 3.4) {
+      isoBox(g, -0.36, y, -0.32, y + 1.7, 1.05, 1.15, 0xcfe9ff, { ow: 2 });
+    }
   }
 
   // стеллажи с посылками вдоль дальних стен
@@ -271,9 +311,8 @@ function buildGround() {
       }
     }
   };
-  rack(4.6, 0.05, 9.4, 0.5, false);
-  rack(14.2, 0.05, 19.4, 0.5, false);
-  rack(0.05, 9.2, 0.5, 12.3, true);
+  // Вдоль дальних стен стеллажей больше нет: там теперь настоящая стена из
+  // текстуры, и всё, что стояло вплотную, оказывалось за ней.
 
   // Склад: длинные стеллажи в два ряда, между ними проход — есть где потеряться
   // и есть что искать.
@@ -473,10 +512,33 @@ export function buildVault() {
 }
 
 /** Стойка: тумба + столешница + стеклянный экран + лоток для налички. */
+// Стойка занимает два тайла вдоль оси x. Текстура нарисована ровно на эту
+// длину, поэтому масштаб считается от неё, а не подбирается на глаз.
+const COUNTER_TILES = 2;
+
 export function buildCounter(def, opened) {
   const c = new Container();
   const g = new Graphics();
   const x = def.x, y = def.y;
+  if (opened && tex.isoCounter && tex.isoCounter !== Texture.EMPTY) {
+    const sp = new Sprite(tex.isoCounter);
+    // ширину картинки приравниваем к экранной ширине участка стойки:
+    // два тайла вдоль x плюс один вглубь по y
+    const want = (COUNTER_TILES + 1) * (TW / 2);
+    sp.scale.set(want / sp.width);
+    sp.anchor.set(0.5, 1);
+    const low = px(x + COUNTER_TILES, y + 1, 0);        // нижняя точка участка
+    const midX = (px(x, y + 1).x + px(x + COUNTER_TILES, y).x) / 2;
+    sp.x = midX; sp.y = low.y;
+    c.addChild(sp);
+    // тень под стойкой, иначе она висит над полом
+    const sh = new Graphics();
+    isoRhomb(sh, x - 0.1, y - 0.1, x + COUNTER_TILES + 0.35, y + 1.05, 0.004, 0x2A1F3D, { alpha: 0.18 });
+    c.addChildAt(sh, 0);
+    c.zIndex = depth(x + COUNTER_TILES, y + 1);
+    items.addChild(c);
+    return c;
+  }
   if (opened) {
     // тумба + белая столешница
     isoBox(g, x, y, x + 2, y + 0.62, 0, 0.86, def.tone);
@@ -826,8 +888,9 @@ export function setCarryStack(view, ratio) {
 // Перегородки — это фон. Раньше они были самым ярким объектом кадра: длинные
 // белые панели с насыщенным фиолетовым кантом сверху и снизу. Их на экране
 // больше, чем всего остального, и внимание забирала пустая стена.
-const PART = 0xD5CCE6;          // чуть светлее пола, но тише мебели
-const PART_TOP = 0xB7A9D4;      // кант того же семейства, без крика
+// Перегородки держим в тон текстурным стенам: мятный корпус, светлый кант.
+const PART = 0xCFE3CE;
+const PART_TOP = 0xE8F3E7;
 const PART_H = 1.15;            // ниже: комнаты читаются, обзор не режется
 
 function buildWalls() {
@@ -913,6 +976,57 @@ export function veilOf(id) { return veils.get(id)?.alpha ?? 0; }
 export function darkAlpha() {
   const r = ROOMS.find((x) => x.dark);
   return r ? (veils.get(r.id)?.alpha ?? 0) : 0;
+}
+
+/** Задние стены из текстуры. Панель нарисована на восемь тайлов, поэтому режем
+ *  её на вертикальные полосы по тайлу: каждая полоса — ровно один шаг сетки,
+ *  и складываются они обратно в целую стену без единого шва. Заодно каждая
+ *  полоса получает свою глубину, и актёры правильно заходят за стену. */
+function wallSlices(metaKey, texKey, count, place) {
+  const m = ISO[metaKey];
+  const src = tex[texKey];
+  if (!m || !src || src === Texture.EMPTY) return false;
+  const sliceW = m.w / m.tiles;
+  const k = (TW / 2) / sliceW;                 // одна полоса — один тайл вдоль оси
+  const drop = sliceW / 2;                     // на столько опускается кромка за тайл
+  for (let i = 0; i < count; i++) {
+    // Крайние полосы панели — это её торцы. Внутри стены они не нужны, иначе
+    // каждые восемь тайлов на ровной стене появлялся бы шов; торцы ставим
+    // только по концам всей стены.
+    const idx = i === 0 ? 0
+      : i === count - 1 ? m.tiles - 1
+      : 1 + ((i - 1) % Math.max(1, m.tiles - 2));
+    const frame = new Rectangle(idx * sliceW, 0, sliceW, m.h);
+    const t = new Texture({ source: src.source, frame });
+    const sp = new Sprite(t);
+    sp.scale.set(k);
+    const z = place(sp, i, m, idx, drop);
+    const c = new Container();
+    c.addChild(sp);
+    c.zIndex = z;
+    items.addChild(c);
+  }
+  return true;
+}
+
+function buildOuterWalls() {
+  const f = ISO['wall-front'], sd = ISO['wall-side'];
+  if (!f || !sd) return false;
+  // стена вдоль оси x (дальняя, «фронт»)
+  const okF = wallSlices('wall-front', 'isoWallF', HALL.w, (sp, i, m, idx, drop) => {
+    sp.anchor.set(0, (m.leftBase * m.h + idx * drop) / m.h);
+    const p = px(i, 0, 0);
+    sp.x = p.x; sp.y = p.y;
+    return depth(i + 1, 0.02);
+  });
+  // стена вдоль оси y (левая, «бок»)
+  const okS = wallSlices('wall-side', 'isoWallS', HALL.h, (sp, i, m, idx, drop) => {
+    sp.anchor.set(1, (m.rightBase * m.h + idx * drop) / m.h);
+    const p = px(0, i, 0);
+    sp.x = p.x; sp.y = p.y;
+    return depth(0.02, i + 1);
+  });
+  return okF && okS;
 }
 
 function isVerticalDoor(d) {
