@@ -102,6 +102,15 @@ async function flushAi() {
 }
 
 /** Клиента обслужили. Решаем, доволен он или будет претензия. */
+let lastIncident = 0;
+
+/** Разбор возможен, только если прошлый был давно. Иначе зал превращается в
+ *  ленту жалоб, и заниматься магазином становится некогда. */
+export function incidentReady() { return Date.now() - lastIncident > REP.upsetGap * 1000; }
+
+/** Сбросить выдержку — нужно тестам, чтобы померить чистый шанс. */
+export function resetIncidentGap() { lastIncident = 0; }
+
 export function onServed(k, counterId) {
   ensure();
   const st = S.counters[counterId];
@@ -109,7 +118,8 @@ export function onServed(k, counterId) {
   const m = morale(counterId);
   let p = REP.upsetBase + REP.upsetPerWait * waited + REP.upsetMoraleWeight * (1 - m);
   if (!st?.clerk) p += 0.02;
-  if (Math.random() < clamp(p, 0, 0.6)) {
+  if (incidentReady() && Math.random() < clamp(p, 0, REP.upsetMax)) {
+    lastIncident = Date.now();
     const inc = pick(INCIDENTS);
     return { upset: true, incident: inc, counterId };
   }

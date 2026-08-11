@@ -12,6 +12,7 @@ await p.waitForFunction(() => window.__ready === true, null, { timeout: 20000 })
 
 const res = await p.evaluate(() => {
   const { S, district } = window.__game;
+  S.level = window.__balance.DISTRICT.needLevel;   // гонка открывается с 15-го уровня
   const out = [];
   const sim = (mySpeed, secs) => {
     for (let i = 0; i < secs; i++) { district.addServed(mySpeed); district.tick(1); }

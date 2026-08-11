@@ -375,19 +375,17 @@ function buildGround() {
     isoBox(d, x, y - 0.04, x + 1.4, y + 0.02, 0.46, 0.46, 0x8B5CF6);
   });
 
-  // стеллажи у дальних стен и вдоль торгового зала
-  shelf(5.0, 0.55, 9.6, 1.0, false);
-  shelf(14.4, 0.55, 19.2, 1.0, false);
-  shelf(0.55, 6.4, 1.0, 10.4, true);
-  shelf(4.5, 6.8, 5.0, 11.4, true);
-  shelf(4.5, 12.2, 5.0, 14.4, true);
+  // Стеллажи стоят там, где им место: на складе. В зале их было десять рядов,
+  // и магазин выглядел складом — оставляем один ряд у стены торгового зала как
+  // витрину с товаром.
+  shelf(4.35, 7.2, 4.85, 9.2, true);   // выше проёма из постаматов в зал
   // склад: два ряда с проходом между ними
   shelf(24.5, 1.4, 25.0, 6.2, true);
   shelf(26.4, 1.4, 26.9, 6.2, true);
   shelf(24.5, 8.6, 25.0, 13.6, true);
   shelf(26.4, 8.6, 26.9, 13.6, true);
   // зелень, корзины, паллеты, скамьи
-  plant(9.4, 6.9); plant(19.2, 14.1); plant(5.6, 14.2, 0.85); plant(19.2, 6.9, 0.85);
+  plant(9.4, 6.9); plant(19.2, 14.1); plant(18.6, 12.8, 0.85); plant(19.2, 6.9, 0.85);
   basket(13.9, 13.6); basket(14.6, 13.6);
   pallet(0.5, 10.9); pallet(25.3, 7.0); pallet(26.1, 13.9);
   bench(15.3, 6.5); bench(15.3, 9.1);
@@ -447,6 +445,7 @@ function buildStreet() {
     }
   }
   drawFoe(g, a3, a4);
+  drawFoeSite(a3, a4);
   for (let y = a3; y < H + 2; y += 3.2) {
     const hh = 2.6 + rnd() * 2.6;
     const c = FAC[Math.floor(rnd() * FAC.length)];
@@ -738,7 +737,44 @@ export function drawCashPile(cont, x, y, z, ratio) {
 /** Пункт конкурента напротив: вывеска, витрина, вход и фургон. */
 export const FOE = { x0: -5.2, x1: 0.8, door: { x: -2.2, y: 0 } };
 
-function drawFoe(g, a3, a4) {
+// Пока соперник не открылся, на его месте стройка за забором. Оба варианта
+// рисуются сразу, а показывается нужный: перестраивать улицу на лету дорого.
+let foeSite = null;
+let foeShop = null;
+
+function drawFoeSite(a3, a4) {
+  const g = new Graphics();
+  const x0 = FOE.x0, x1 = FOE.x1;
+  // площадка и забор
+  isoRhomb(g, x0, a4, x1, a3, 0.02, 0xC9C2B4);
+  for (let x = x0; x < x1; x += 1.2) {
+    isoBox(g, x, a3 - 0.14, Math.min(x + 1.1, x1), a3 - 0.06, 0, 1.5,
+           (x - x0) % 2.4 < 1.2 ? 0x8FB4E0 : 0xE8EDF5, { ow: 1.6, sheen: false });
+  }
+  isoBox(g, x0, a3 - 0.16, x1, a3 - 0.12, 1.5, 0.1, 0x5B7FB0, { sheen: false });
+  // вагончик и куча песка за забором
+  isoBox(g, x0 + 0.6, a4 + 0.5, x0 + 2.6, a4 + 1.4, 0, 1.0, 0xE0E4EC, { ow: 1.6 });
+  isoBox(g, x0 + 0.6, a4 + 0.5, x0 + 2.6, a4 + 1.4, 1.0, 0.12, 0x9AA6BB);
+  isoCyl(g, x0 + 3.9, a4 + 1.0, 0.8, 0, 0.7, 0xD8C08A, 0);
+  // табличка «скоро откроется»
+  isoBox(g, x0 + 4.6, a3 - 0.2, x1 - 0.2, a3 - 0.14, 0.6, 0.8, 0xFFFFFF, { ow: 1.6 });
+  isoBox(g, x0 + 4.8, a3 - 0.22, x1 - 0.4, a3 - 0.16, 0.8, 0.34, 0xE24A6A);
+  const c = new Container();
+  c.addChild(g);
+  c.zIndex = depth(x1, a3) - 200;
+  items.addChild(c);
+  foeSite = c;
+  return c;
+}
+
+/** Показать соперника или стройку на его месте. */
+export function setFoeOpen(open) {
+  if (foeSite) foeSite.visible = !open;
+  if (foeShop) foeShop.visible = open;
+}
+
+function drawFoe(gOuter, a3, a4) {
+  const g = new Graphics();
   const x0 = FOE.x0, x1 = FOE.x1;
   FOE.door.y = a3;
   const brand = 0xE24A6A;
@@ -770,6 +806,12 @@ function drawFoe(g, a3, a4) {
   isoBox(g, vx + 1.4, vy + 0.12, vx + 2.1, vy + 0.78, 0.52, 0.5, brand);
   isoCyl(g, vx + 0.5, vy + 0.9, 0.2, 0, 0.16, 0x2A2140);
   isoCyl(g, vx + 1.8, vy + 0.9, 0.2, 0, 0.16, 0x2A2140);
+  const c = new Container();
+  c.addChild(g);
+  c.zIndex = depth(x1, a3) - 200;
+  items.addChild(c);
+  foeShop = c;
+  void gOuter;
 }
 
 // ── Уличное движение ─────────────────────────────────────────────────────────
@@ -779,21 +821,23 @@ const traffic = [];
 /** Прохожие и клиенты конкурента — улица должна жить. Машин нет намеренно:
  *  на карте и так плотно, они забирали внимание у зала. */
 function buildTraffic() {
+  // Улица — фон, а не вторая сцена. Народу там втрое меньше, чем было: раньше
+  // одиннадцать человек мельтешили за стеной и перетягивали на себя внимание.
   // клиенты конкурента: идут по дальнему тротуару и заходят к нему
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 2; i++) {
     traffic.push({
-      view: makeCharView(0xE9D5E8), kind: 'foe', t: i * 3.4, span: 18,
+      view: makeCharView(0xE9D5E8), kind: 'foe', t: i * 9, span: 18,
       speed: 0.85 + (i % 3) * 0.2, ft: 0,
     });
   }
 
   // прохожие по ближнему тротуару
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 3; i++) {
     const vertical = i % 2 === 1;
     const view = makeCharView(0xffffff);
     const span = vertical ? HALL.h + 4 : HALL.w + 4;
     traffic.push({
-      view, kind: 'ped', vertical, t: (i / 6) * span, span,
+      view, kind: 'ped', vertical, t: (i / 3) * span, span,
       speed: 0.9 + (i % 3) * 0.25, dir: i % 4 < 2 ? 1 : -1,
       off: -(STREET.walk * (0.3 + (i % 2) * 0.4)),
       ft: 0,
@@ -1076,7 +1120,13 @@ function rackInto(g, x0, y0, x1, y1, vertical) {
  *  глубине. Раньше весь декор жил в слое пола — из-за этого стеллажи уезжали
  *  под дальнюю стену, а люди проходили сквозь скамейки и кусты, не заходя за
  *  них. Плоское (ковры, разметка) по-прежнему рисуется на полу. */
+const decorRects = [];
+/** След всей обстановки. По нему проверяют, что ничего не поставлено в стену,
+ *  в витрину, на площадку покупки или в дверной проём. */
+export function decorFootprints() { return decorRects.slice(); }
+
 function decor(x0, y0, x1, y1, draw) {
+  decorRects.push({ x0, y0, x1, y1 });
   const g = new Graphics();
   draw(g);
   const c = new Container();

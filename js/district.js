@@ -32,8 +32,19 @@ function fresh(week) {
   };
 }
 
+/** Гонка за район открыта. До этого дом напротив пустует. */
+export function unlocked() { return (S.level || 1) >= DISTRICT.needLevel; }
+
 export function ensure() {
-  if (!S.district) { S.district = fresh(weekNo()); return; }
+  if (!unlocked()) return;
+  if (!S.district) {
+    S.district = fresh(weekNo());
+    // Открытие соперника — событие: о нём говорят и в ленте, и тостом.
+    reviews.addNews(`Через дорогу открылся «${DISTRICT.name}» — теперь у вас есть сосед`,
+                    'Новости квартала');
+    emit('foe');
+    return;
+  }
   if (S.district.week !== weekNo()) closeWeek();
 }
 
@@ -75,12 +86,15 @@ export function foeRate() {
 
 /** Вы выдали заказ — засчитываем в район. */
 export function addServed(n = 1) {
+  if (!unlocked()) return;
   if (!S.district) ensure();
+  if (!S.district) return;
   S.district.my += n;
   S.district.acc = (S.district.acc || 0) + n;
 }
 
 export function tick(dt) {
+  if (!unlocked()) return;
   const d = S.district;
   if (!d || dt <= 0) return;
   d.elapsed = (d.elapsed || 0) + dt;
@@ -131,6 +145,7 @@ export function newsFoeLevel(lvl) {
 
 /** Пока игрока не было, соперник работал — но вполсилы. */
 export function advanceOffline(sec) {
+  if (!unlocked()) return;
   const d = S.district;
   if (!d || sec < 60) return;
   const t = Math.min(sec, DISTRICT.offlineCapH * 3600);

@@ -329,6 +329,15 @@ let padFxTick = 0;
 
 // Свет на складе зажигается, когда игрок туда заходит, и гаснет, когда уходит.
 // Из-за этого проверить сотрудника можно только ногами — как и просили.
+// Соперник появляется на пятнадцатом уровне: до этого напротив стройка.
+let foeWas = null;
+function tickFoe() {
+  const open = district.unlocked();
+  if (foeWas === open) return;
+  foeWas = open;
+  scene.setFoeOpen(open);
+}
+
 function tickStock(dt) {
   const r = nav.roomAt(actors.player.x, actors.player.y);
   scene.litRoom(r?.id || '', dt);
@@ -407,6 +416,7 @@ function loop(rawDt) {
   });
   actors.tickClerks(dt);
   tickStock(dt);
+  tickFoe();
   if (!guest) {
     actors.tickRunner(dt, game.takeFromSource, game.deposit);
     game.tick(dt, ui);

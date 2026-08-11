@@ -124,6 +124,8 @@ ok('всплеск не вечный, у него есть срок', posted && 
 
 const news = await p.evaluate(() => new Promise((res) => {
   const { S, district } = window.__game;
+  S.level = window.__balance.DISTRICT.needLevel;   // гонка открывается с 15-го уровня
+  district.ensure();
   S.reviews = [];
   S.district.my = 10; S.district.foe = 200; S.district.lastLead = null;
   district.tick(0.1);                         // запоминаем, что мы отстаём

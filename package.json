@@ -39,6 +39,7 @@
     "ux": "node tools/ux.mjs",
     "tex": "node tools/tex.mjs",
     "depth": "node tools/depth.mjs",
+    "layout": "node tools/layout.mjs",
     "textures": "node tools/textures.mjs",
     "server": "cd server && npx wrangler deploy"
   }

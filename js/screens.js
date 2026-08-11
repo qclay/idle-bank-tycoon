@@ -505,6 +505,16 @@ function achvView() {
 function districtView() {
   const wrap = document.createElement('div');
   district.ensure();
+  if (!district.unlocked()) {
+    const wrap0 = document.createElement('div');
+    wrap0.appendChild(h(`<div class="note">
+      <b>Соседа пока нет</b>
+      <span>Дом напротив стоит за строительным забором. «${esc(DISTRICT.name)}» откроется,
+      когда вы дорастёте до ${DISTRICT.needLevel}-го уровня — сейчас ${S.level}.</span>
+    </div>`).firstElementChild);
+    wrap0.appendChild(h('<div class="empty">Пока разбирайтесь со своим магазином: гонка никуда не денется.</div>').firstElementChild);
+    return wrap0;
+  }
   const d = S.district;
   const p = district.pending();
 

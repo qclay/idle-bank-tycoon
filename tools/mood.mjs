@@ -25,14 +25,31 @@ const res = await p.evaluate(() => {
              info: `5★ ×${hi.spawn.toFixed(2)} против 1★ ×${lo.spawn.toFixed(2)}` });
   S.rep = B.REP.start;
 
-  // 2. недовольный клиент появляется, когда клиент долго ждал
+  // 2. Претензия — редкое событие, и между двумя обязательно проходит время.
+  // Считаем шанс в чистом виде, обходя выдержку: иначе она сразу обрубит счёт.
   S.counters.c1.clerk = 1; S.counters.c1.morale = 1;
+  const chance = (waited) => {
+    let n = 0;
+    for (let i = 0; i < 400; i++) {
+      window.__game.reviews.resetIncidentGap();
+      if (reviews.onServed({ waited }, 'c1').upset) n++;
+    }
+    return n;
+  };
+  const долго = chance(1);
+  const быстро = chance(0);
+  out.push({ t: 'долгое ожидание рождает претензии чаще быстрого',
+             ok: долго > быстро * 2 && долго < 400 * 0.3,
+             info: `${долго} из 400 при долгом ожидании против ${быстро} при быстром` });
+
+  // выдержка: подряд две претензии невозможны
+  window.__game.reviews.resetIncidentGap();
   let upsets = 0;
   for (let i = 0; i < 400; i++) {
     const r = reviews.onServed({ waited: 1 }, 'c1');
     if (r.upset) upsets++;
   }
-  out.push({ t: 'долгое ожидание рождает претензии', ok: upsets > 40,
+  out.push({ t: 'подряд претензии не сыплются — между ними выдержка', ok: upsets <= 2,
              info: `${upsets} из 400` });
 
   let calm = 0;

@@ -423,10 +423,9 @@ export function tickFoeMarker() {
     foeEl.addEventListener('click', () => window.__openTab('tasks', 'district'));
     els.worldUI.appendChild(foeEl);
   }
-  // Пока гонка не началась, указатель на соперника только мешает: он висит
-  // посреди экрана с нулями и спорит с названием комнаты.
+  // Пока соперник не открылся и гонка не началась, указатель только мешает.
   const d0 = S.district;
-  const race = d0 && (d0.my > 0 || d0.foe > 0);
+  const race = district.unlocked() && d0 && (d0.my > 0 || d0.foe > 0);
   foeEl.hidden = !race;
   if (!race) return;
   const F = scene.FOE;
