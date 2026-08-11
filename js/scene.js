@@ -562,18 +562,18 @@ export function buildAtm(def, opened) {
   const x = def.x, y = def.y;
   if (opened) {
     // Постамат чуть выше человека, а не вдвое: 1.32 против прежних 2.05.
-    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 1.32, def.tone);
+    isoBox(g, x, y, x + 0.8, y + 0.66, 0, 1.2, def.tone);
     // сетка ячеек на фронтальной грани
     for (let r = 0; r < 4; r++) {
       for (let cc = 0; cc < 2; cc++) {
-        const zz = 0.1 + r * 0.3;
+        const zz = 0.09 + r * 0.27;
         const xx = x + 0.06 + cc * 0.36;
         isoBox(g, xx, y + 0.66, xx + 0.3, y + 0.69, zz, 0.3, shade(def.tone, 0.3), { ow: 1.2 });
       }
     }
     // экран сверху
-    isoBox(g, x + 0.12, y + 0.66, x + 0.68, y + 0.7, 1.02, 0.22, 0x2A2140, { ow: 1.2 });
-    isoBox(g, x + 0.16, y + 0.66, x + 0.64, y + 0.69, 1.05, 0.15, 0x67E8F9, { ow: 1 });
+    isoBox(g, x + 0.12, y + 0.66, x + 0.68, y + 0.7, 0.92, 0.2, 0x2A2140, { ow: 1.2 });
+    isoBox(g, x + 0.16, y + 0.66, x + 0.64, y + 0.69, 0.95, 0.14, 0x67E8F9, { ow: 1 });
   } else {
     isoBox(g, x, y, x + 0.8, y + 0.66, 0, 2.05, def.tone, { ow: 0, sheen: false });
     c.__ghost = true;
@@ -1075,6 +1075,11 @@ function decor(x0, y0, x1, y1, draw) {
 }
 
 /** Клиент или сотрудник: изометрический спрайт человека на 4 направления. */
+/** Рост обычного человека в пикселях сцены. Клиенты чуть разного роста, чтобы
+ *  толпа не выглядела узором, поэтому мерить размеры надо от этой величины, а
+ *  не от случайно попавшегося клиента. */
+export function charHeight() { return (tex.se0?.height || 0) * 0.3; }
+
 export function makeCharView(tint = 0, size = 1) {
   const c = new Container();
   const shadow = new Graphics();

@@ -107,9 +107,9 @@ const sizes = await p.evaluate(() => {
     const base = scene.screenOf(x, y, 0);
     return Math.round((base.y - b.top) / k);
   };
-  const kk = actors.customers[0];
   return {
-    клиент: kk ? up(kk.view, kk.x, kk.y) : 0,
+    // рост человека берём эталонный: клиенты нарочно чуть разного роста
+    клиент: Math.round(scene.charHeight()),
     игрок: up(actors.player.view, actors.player.x, actors.player.y),
     стойка: up(window.__views.counters.get('c1'), B.COUNTERS[0].x + 2, B.COUNTERS[0].y + 0.62),
     постамат: up(window.__views.atms.get('a1'), B.ATMS[0].x + 0.8, B.ATMS[0].y + 0.66),

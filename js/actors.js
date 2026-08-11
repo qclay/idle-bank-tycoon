@@ -146,8 +146,17 @@ const TINTS = [
 ];
 
 export function spawnRate() {
+  // В начале игры магазин пустой и людей мало — как и должно быть: один
+  // человек раз в несколько секунд. Поток растёт вместе с делом: за каждую
+  // новую витрину, за её уровень, за репутацию, кофе-точку и продвижение.
   const open = COUNTERS.filter((c) => S.counters[c.id].open).length;
+  let lvls = 0;
+  for (const c of COUNTERS) {
+    const st = S.counters[c.id];
+    if (st.open) lvls += Math.max(0, st.lvl - 1);
+  }
   let t = CUSTOMER.spawnBase * CUSTOMER.spawnPerCounter ** Math.max(0, open - 1);
+  t /= 1 + CUSTOMER.spawnPerLevel * lvls;
   let coffee = 0;
   for (const z of ZONES) {
     const zs = S.zones?.[z.id];

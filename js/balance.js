@@ -56,8 +56,8 @@ export const DOORWAYS = [
 // Центральный проход (x 11…13.4) от входа к проёму держим свободным.
 export const COUNTERS = [
   { id: 'c1', name: 'Выдача заказов', x: 5,    y: 2,  room: 'pickup', cost: 0,      base: 30,    tone: 0x7C3AED },
-  { id: 'c2', name: 'Примерочная',    x: 9.4,  y: 2,  room: 'pickup', cost: 1200,   base: 110,    tone: 0x0EA5E9 },
-  { id: 'c3', name: 'Приём возвратов',x: 16.4, y: 2,  room: 'pickup', cost: 26000,  base: 412,   tone: 0x22C55E },
+  { id: 'c2', name: 'Примерочная',    x: 9.4,  y: 2,  room: 'pickup', cost: 700,   base: 110,    tone: 0x0EA5E9 },
+  { id: 'c3', name: 'Приём возвратов',x: 16.4, y: 2,  room: 'pickup', cost: 14000,  base: 412,   tone: 0x22C55E },
   { id: 'c4', name: 'Крупногабарит',  x: 5,    y: 8,  room: 'sales',  cost: 620000, base: 1600,   tone: 0xF59E0B },
   { id: 'c5', name: 'Экспресс-выдача',x: 15.6, y: 8,  room: 'sales',  cost: 1.9e7,  base: 6500,  tone: 0xEC4899 },
   { id: 'c6', name: 'Premium-зона',   x: 15.6, y: 12, room: 'sales',  cost: 7.2e8,  base: 26250, tone: 0x14B8A6 },
@@ -114,8 +114,9 @@ export const COUNTER_UP = { costRatio: 0.8, grow: 1.23, payGrow: 1.125, speedGro
 // деньгам за клиента, а не по толпе. Толпа быстро утомляет и превращает игру
 // в суету.
 export const CUSTOMER = {
-  spawnBase: 2.1,        // секунд между клиентами при одной стойке
+  spawnBase: 8.0,        // секунд между клиентами в начале игры
   spawnPerCounter: 0.86, // во столько раз чаще с каждой открытой стойкой
+  spawnPerLevel: 0.012,  // и ещё немного за каждый уровень открытых витрин
   minSpawn: 1.15,        // чаще этого людей в зал не пускаем
   maxOnScreen: 16,       // столько людей одновременно в зале
   serveTime: 1.35,       // сколько секунд обслуживается один клиент
@@ -134,12 +135,12 @@ export const STAFF = {
   clerk: {
     id: 'clerk', name: 'Оператор', desc: 'Сам выдаёт заказы на стойке',
     art: './assets/char/se_0.png',
-    cost: 3400, grow: 4.3, speedBase: 1, speedStep: 0.15, maxLvl: 20,
+    cost: 1300, grow: 4.3, speedBase: 1, speedStep: 0.15, maxLvl: 20,
   },
   runner: {
     id: 'runner', name: 'Администратор', desc: 'Сам собирает выручку и носит в кассу',
     art: './assets/char/nw_0.png',
-    cost: 6200, grow: 4.1, bagBase: 75, bagStep: 35, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
+    cost: 2400, grow: 4.1, bagBase: 75, bagStep: 35, speedBase: 2.6, speedStep: 0.14, maxLvl: 20,
   },
 };
 
