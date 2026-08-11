@@ -215,6 +215,7 @@ export function applyQuality() {
 }
 window.__applyQuality = applyQuality;
 window.__rebuild = () => { rebuildObjects(); actors.refreshSolids(); };
+window.__views = views;   // для проверки порядка отрисовки
 
 // ── Постройка зала ───────────────────────────────────────────────────────────
 

@@ -91,7 +91,7 @@ svg{width:100%;height:100%;display:block}
 .lvl__num{color:rgba(255,255,255,.72);font-size:calc(10 * var(--du));white-space:nowrap}
 
 /* сумка игрока */
-#carry{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--sat) + 96 * var(--du));z-index:20;
+#carry{position:absolute;left:50%;transform:translateX(-50%);top:calc(var(--sat) + 112 * var(--du));z-index:20;
   display:flex;align-items:center;gap:calc(7 * var(--du));pointer-events:none;
   height:calc(30 * var(--du));padding:0 calc(12 * var(--du)) 0 calc(6 * var(--du));
   border-radius:calc(15 * var(--du));background:var(--glass);
@@ -390,7 +390,7 @@ svg{width:100%;height:100%;display:block}
 #goal.is-calm .goal__arrow{display:none}
 #goal:active{transform:translateX(-50%) scale(.96)}
 
-.roomttl{position:absolute;left:50%;top:calc(var(--sat) + 206 * var(--du));
+.roomttl{position:absolute;left:50%;top:calc(var(--sat) + 214 * var(--du));
   transform:translate(-50%,calc(-8 * var(--du)));pointer-events:none;text-align:center;
   opacity:0;transition:opacity .35s ease,transform .35s ease}
 .roomttl.is-on{opacity:1;transform:translate(-50%,0)}

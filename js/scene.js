@@ -16,13 +16,20 @@ export const INK = 0x3f2b18;
 
 let app = null;
 export let world = null;      // контейнер мира (двигается камерой)
-let ground = null;            // статичный пол и стены
+let ground = null;            // статичный пол и улица
+let shell = null;             // внешние стены: всегда за предметами, но перед улицей
 let items = null;             // объекты и актёры, сортируются по глубине
 let fxLayer = null;           // эффекты поверх
 export const cam = { x: 0, y: 0, scale: 1 };
 const tex = {};
 
 export function getApp() { return app; }
+
+/** Порядок слоёв мира: пол → внешние стены → предметы → эффекты. */
+export function layers() {
+  return { ground: world.getChildIndex(ground), shell: world.getChildIndex(shell),
+           items: world.getChildIndex(items), fx: world.getChildIndex(fxLayer) };
+}
 
 // ── Примитивы ────────────────────────────────────────────────────────────────
 
@@ -129,10 +136,11 @@ export async function initScene(host, onProgress = () => {}) {
 
   world = new Container();
   ground = new Container();
+  shell = new Container();          // внешние стены здания
   items = new Container();
   items.sortableChildren = true;
   fxLayer = new Container();
-  world.addChild(ground, items, fxLayer);
+  world.addChild(ground, shell, items, fxLayer);
   app.stage.addChild(world);
 
   buildGround();
@@ -311,8 +319,12 @@ function buildGround() {
       }
     }
   };
-  // Вдоль дальних стен стеллажей больше нет: там теперь настоящая стена из
-  // текстуры, и всё, что стояло вплотную, оказывалось за ней.
+  // Стеллажи ставим перед дальней стеной, а не вплотную к ней: иначе они
+  // оказываются за текстурной стеной и не видны. Заодно они разбивают
+  // сплошную зелёную плоскость, которая иначе занимает треть экрана.
+  rack(5.0, 0.55, 9.6, 1.0, false);
+  rack(14.4, 0.55, 19.2, 1.0, false);
+  rack(0.55, 6.4, 1.0, 10.4, true);
 
   // Склад: длинные стеллажи в два ряда, между ними проход — есть где потеряться
   // и есть что искать.
@@ -521,21 +533,23 @@ export function buildCounter(def, opened) {
   const g = new Graphics();
   const x = def.x, y = def.y;
   if (opened && tex.isoCounter && tex.isoCounter !== Texture.EMPTY) {
-    const sp = new Sprite(tex.isoCounter);
-    // ширину картинки приравниваем к экранной ширине участка стойки:
-    // два тайла вдоль x плюс один вглубь по y
+    const src = tex.isoCounter;
+    // ширину картинки приравниваем к экранной ширине участка: два тайла вдоль
+    // оси плюс один вглубь
     const want = (COUNTER_TILES + 1) * (TW / 2);
-    sp.scale.set(want / sp.width);
+    const sp = new Sprite(src);
+    sp.scale.set(want / src.width);
     sp.anchor.set(0.5, 1);
-    const low = px(x + COUNTER_TILES, y + 1, 0);        // нижняя точка участка
-    const midX = (px(x, y + 1).x + px(x + COUNTER_TILES, y).x) / 2;
-    sp.x = midX; sp.y = low.y;
-    c.addChild(sp);
+    sp.x = (px(x, y + 1).x + px(x + COUNTER_TILES, y).x) / 2;
+    sp.y = px(x + COUNTER_TILES, y + 1, 0).y;
     // тень под стойкой, иначе она висит над полом
     const sh = new Graphics();
     isoRhomb(sh, x - 0.1, y - 0.1, x + COUNTER_TILES + 0.35, y + 1.05, 0.004, 0x2A1F3D, { alpha: 0.18 });
-    c.addChildAt(sh, 0);
-    c.zIndex = depth(x + COUNTER_TILES, y + 1);
+    c.addChild(sh, sp);
+    // Глубина — по середине переднего края. Резать стойку на тайлы было хуже:
+    // формально точнее, но человек, стоящий по центру перед ней, попадал за её
+    // дальнюю половину и выглядел разрезанным.
+    c.zIndex = depth(x + 1, y + 0.62);
     items.addChild(c);
     return c;
   }
@@ -982,7 +996,7 @@ export function darkAlpha() {
  *  её на вертикальные полосы по тайлу: каждая полоса — ровно один шаг сетки,
  *  и складываются они обратно в целую стену без единого шва. Заодно каждая
  *  полоса получает свою глубину, и актёры правильно заходят за стену. */
-function wallSlices(metaKey, texKey, count, place) {
+function wallSlices(metaKey, texKey, count, mirror, place) {
   const m = ISO[metaKey];
   const src = tex[texKey];
   if (!m || !src || src === Texture.EMPTY) return false;
@@ -996,7 +1010,11 @@ function wallSlices(metaKey, texKey, count, place) {
     const idx = i === 0 ? 0
       : i === count - 1 ? m.tiles - 1
       : 1 + ((i - 1) % Math.max(1, m.tiles - 2));
-    const frame = new Rectangle(idx * sliceW, 0, sliceW, m.h);
+    // У боковой панели начало стены — правый край картинки, поэтому полосы
+    // берём справа налево. Раньше они брались слева, и стена рассыпалась на
+    // висящие в воздухе куски.
+    const fx = mirror ? m.w - (idx + 1) * sliceW : idx * sliceW;
+    const frame = new Rectangle(fx, 0, sliceW, m.h);
     const t = new Texture({ source: src.source, frame });
     const sp = new Sprite(t);
     sp.scale.set(k);
@@ -1004,7 +1022,10 @@ function wallSlices(metaKey, texKey, count, place) {
     const c = new Container();
     c.addChild(sp);
     c.zIndex = z;
-    items.addChild(c);
+    // Стены здания стоят по краю карты, и зайти за них некому: игрок и клиенты
+    // прижаты к 0.4. Поэтому им место в отдельном слое — иначе прохожие с
+    // улицы, у которых глубина больше, рисовались поверх стены.
+    shell.addChild(c);
   }
   return true;
 }
@@ -1013,14 +1034,14 @@ function buildOuterWalls() {
   const f = ISO['wall-front'], sd = ISO['wall-side'];
   if (!f || !sd) return false;
   // стена вдоль оси x (дальняя, «фронт»)
-  const okF = wallSlices('wall-front', 'isoWallF', HALL.w, (sp, i, m, idx, drop) => {
+  const okF = wallSlices('wall-front', 'isoWallF', HALL.w, false, (sp, i, m, idx, drop) => {
     sp.anchor.set(0, (m.leftBase * m.h + idx * drop) / m.h);
     const p = px(i, 0, 0);
     sp.x = p.x; sp.y = p.y;
     return depth(i + 1, 0.02);
   });
   // стена вдоль оси y (левая, «бок»)
-  const okS = wallSlices('wall-side', 'isoWallS', HALL.h, (sp, i, m, idx, drop) => {
+  const okS = wallSlices('wall-side', 'isoWallS', HALL.h, true, (sp, i, m, idx, drop) => {
     sp.anchor.set(1, (m.rightBase * m.h + idx * drop) / m.h);
     const p = px(0, i, 0);
     sp.x = p.x; sp.y = p.y;
